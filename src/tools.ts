@@ -1,6 +1,6 @@
 // 工具元数据(导航、卡片、最近使用等共用)
 import type { ToolId } from './types';
-import { IconPiston, IconBolt, IconShaft, IconFlange, IconVessel, type IconProps } from './components/icons';
+import { IconPiston, IconBolt, IconShaft, IconFlange, IconVessel, IconBelt, IconPump, IconAccumulator, IconTolerance, IconMotor, type IconProps } from './components/icons';
 
 export interface ToolMeta {
   id: ToolId;
@@ -45,6 +45,41 @@ export const TOOLS: ToolMeta[] = [
     desc: '600 MPa 级超高压缸筒设计,双层缩套 / 钢丝缠绕方案与过盈量计算。',
     formula: 'σe ≤ [σ] · 预紧降内壁应力',
     icon: IconVessel,
+  },
+  {
+    id: 'belt',
+    name: '同步带与 V 带',
+    desc: '带传动选型:节线长、中心距、包角与张紧轴力计算。',
+    formula: 'Lp ≈ 2a + (π/2)(d₁+d₂) + (d₂−d₁)²/4a',
+    icon: IconBelt,
+  },
+  {
+    id: 'pump',
+    name: '液压泵电机匹配',
+    desc: '泵排量、轴功率、驱动扭矩与标准电机功率等级选型。',
+    formula: 'P = (p·Q) / (600·ηt)',
+    icon: IconPump,
+  },
+  {
+    id: 'accumulator',
+    name: '液压蓄能器',
+    desc: '蓄能器公称容积、充气压力与压缩比校核。',
+    formula: 'V₀ = ΔV / [(p₀/p₁)^(1/n) − (p₀/p₂)^(1/n)]',
+    icon: IconAccumulator,
+  },
+  {
+    id: 'tolerance',
+    name: 'ISO 公差配合',
+    desc: 'ISO 286 孔轴极限偏差查询与配合性质(间隙 / 过盈)判定。',
+    formula: 'ES/EI · es/ei → X / Y',
+    icon: IconTolerance,
+  },
+  {
+    id: 'motor',
+    name: '电机选型',
+    desc: '丝杠 / 带传动负载惯量折算、峰值扭矩与惯量比校核。',
+    formula: 'T = T_L + T_a · JL/Jm',
+    icon: IconMotor,
   },
 ];
 

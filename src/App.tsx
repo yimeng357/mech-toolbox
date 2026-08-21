@@ -18,6 +18,11 @@ import { BoltPreloadTool } from './tools/BoltPreloadTool';
 import { ShaftDiameterTool } from './tools/ShaftDiameterTool';
 import { FlangeBoltTool } from './tools/FlangeBoltTool';
 import { VesselTool } from './tools/VesselTool';
+import { BeltDriveTool } from './tools/BeltDriveTool';
+import { HydraulicPumpMotorTool } from './tools/HydraulicPumpMotorTool';
+import { AccumulatorTool } from './tools/AccumulatorTool';
+import { IsoToleranceTool } from './tools/IsoToleranceTool';
+import { MotorSizingTool } from './tools/MotorSizingTool';
 
 const SETTINGS_KEY = 'mech_settings_v1';
 
@@ -39,6 +44,11 @@ const VIEW_TITLES: Record<ViewName, { title: string; desc: string }> = {
   shaft: { title: '轴径计算', desc: '按扭转强度计算推荐轴径(扭矩 / 功率输入)' },
   flange: { title: '法兰螺栓', desc: '估算内压分离力与单个螺栓载荷' },
   vessel: { title: '超高压缸筒', desc: '600 MPa 级缸筒设计:双层缩套 / 钢丝缠绕' },
+  belt: { title: '同步带与 V 带', desc: '带传动选型:节线长、中心距、包角与张紧轴力' },
+  pump: { title: '液压泵电机匹配', desc: '泵排量、轴功率与标准电机功率等级选型' },
+  accumulator: { title: '液压蓄能器', desc: '公称容积、充气压力与压缩比校核' },
+  tolerance: { title: 'ISO 公差配合', desc: '孔轴极限偏差与配合间隙 / 过盈查询' },
+  motor: { title: '电机选型', desc: '负载惯量折算、峰值扭矩与惯量比校核' },
   convert: { title: '单位换算', desc: '长度 / 压力 / 力 / 扭矩 / 功率 / 质量 / 温度' },
   history: { title: '历史记录', desc: '所有计算结果均保存在浏览器本地' },
   settings: { title: '设置', desc: '主题、小数位数与数据管理' },
@@ -174,6 +184,21 @@ export default function App() {
             )}
             {view === 'vessel' && (
               <VesselTool {...toolProps} preset={restore?.toolId === 'vessel' ? restore.inputs : null} />
+            )}
+            {view === 'belt' && (
+              <BeltDriveTool {...toolProps} preset={restore?.toolId === 'belt' ? restore.inputs : null} />
+            )}
+            {view === 'pump' && (
+              <HydraulicPumpMotorTool {...toolProps} preset={restore?.toolId === 'pump' ? restore.inputs : null} />
+            )}
+            {view === 'accumulator' && (
+              <AccumulatorTool {...toolProps} preset={restore?.toolId === 'accumulator' ? restore.inputs : null} />
+            )}
+            {view === 'tolerance' && (
+              <IsoToleranceTool {...toolProps} preset={restore?.toolId === 'tolerance' ? restore.inputs : null} />
+            )}
+            {view === 'motor' && (
+              <MotorSizingTool {...toolProps} preset={restore?.toolId === 'motor' ? restore.inputs : null} />
             )}
             {view === 'convert' && <UnitConverter />}
             {view === 'history' && (

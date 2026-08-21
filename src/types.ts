@@ -1,6 +1,6 @@
 // 全局共享类型定义
 
-export type ToolId = 'cylinder' | 'bolt' | 'shaft' | 'flange' | 'vessel';
+export type ToolId = 'cylinder' | 'bolt' | 'shaft' | 'flange' | 'vessel' | 'belt' | 'pump' | 'accumulator' | 'tolerance' | 'motor';
 export type ViewName = 'dashboard' | ToolId | 'convert' | 'history' | 'settings';
 
 /** 一条计算结果(带标签、值、单位) */

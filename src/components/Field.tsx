@@ -10,9 +10,11 @@ interface NumFieldProps {
   hint?: string;
   placeholder?: string;
   opt?: string;
+  /** 常用值快捷按钮(点击填入) */
+  presets?: Array<string | number>;
 }
 
-export function NumField({ label, symbol, value, onChange, unit, error, hint, placeholder, opt }: NumFieldProps) {
+export function NumField({ label, symbol, value, onChange, unit, error, hint, placeholder, opt, presets }: NumFieldProps) {
   return (
     <div className="field">
       <div className="lbl">
@@ -30,6 +32,21 @@ export function NumField({ label, symbol, value, onChange, unit, error, hint, pl
         />
         {unit && <span className={`unit ${error ? 'err' : ''}`}>{unit}</span>}
       </div>
+      {presets && presets.length > 0 && (
+        <div className="preset-list" style={{ marginTop: 6, gap: 6 }}>
+          {presets.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className="preset-chip"
+              style={{ padding: '2px 10px', fontSize: 11 }}
+              onClick={() => onChange(String(p))}
+            >
+              {p} {unit ?? ''}
+            </button>
+          ))}
+        </div>
+      )}
       {error ? <div className="err">{error}</div> : hint ? <div className="hint">{hint}</div> : null}
     </div>
   );

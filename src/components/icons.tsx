@@ -94,3 +94,27 @@ export const IconArrowRight = (p: IconProps) => (
 export const IconSwap = (p: IconProps) => (
   <Svg {...p}><path d="M8 4v14M8 18l-4-4M8 18l4-4" /><path d="M16 20V6M16 6l-4 4M16 6l4 4" /></Svg>
 );
+
+export const IconBelt = (p: IconProps) => (
+  <Svg {...p}><circle cx="6" cy="12" r="3" /><circle cx="18" cy="12" r="3" /><path d="M8.8 9.5h6.4M8.8 14.5h6.4" /><path d="M6 9V6.8M18 15v2.2" /></Svg>
+);
+
+export const IconPump = (p: IconProps) => (
+  <Svg {...p}><circle cx="9" cy="12" r="3.2" /><circle cx="15" cy="12" r="3.2" /><path d="M3 9.5v-3h3M21 14.5v3h-3" /></Svg>
+);
+
+export const IconAccumulator = (p: IconProps) => (
+  <Svg {...p}><rect x="7.5" y="4.5" width="9" height="15" rx="4.5" /><path d="M7.5 13h9" /><path d="M11 4.5V3h2v1.5" /></Svg>
+);
+
+export const IconTolerance = (p: IconProps) => (
+  <Svg {...p}><path d="M5 5h8v14H5z" /><path d="M11 8.5h6v7h-6z" /></Svg>
+);
+
+export const IconMotor = (p: IconProps) => (
+  <Svg {...p}><rect x="3.5" y="9" width="13" height="6" rx="2" /><path d="M16.5 12H21" /><path d="M7 9V6.5h6V9M7 15v2.5h6V15" /></Svg>
+);
+
+export const IconPrint = (p: IconProps) => (
+  <Svg {...p}><path d="M6 9V3h12v6" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" rx="1" /></Svg>
+);

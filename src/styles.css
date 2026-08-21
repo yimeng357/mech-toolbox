@@ -363,3 +363,46 @@ select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-s
   .content { padding: 14px; }
   .topbar { padding: 12px 16px; }
 }
+
+/* ============ 打印(导出计算书) ============ */
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    background-image: none;
+  }
+  .sidebar, .topbar, .btn, .result-actions {
+    display: none !important;
+  }
+  .app { display: block; height: auto; overflow: visible; }
+  .main { overflow: visible; }
+  .content { padding: 0 !important; overflow: visible; }
+  .view { max-width: 100% !important; }
+  .tool-layout { grid-template-columns: 1fr; gap: 0; }
+  .tool-form { display: none !important; }
+  .result-card {
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    break-inside: avoid;
+  }
+  .result-item, .formula-box, .note-box, .disclaimer, .steps li {
+    background: #fff !important;
+    border-color: #ddd !important;
+    color: #000 !important;
+  }
+  .result-item .lb, .result-item .un, .sec-label, .formula-alt, .note-box {
+    color: #444 !important;
+  }
+  .result-item.primary {
+    border-color: #999 !important;
+    box-shadow: none !important;
+  }
+  .result-item.primary .lb, .result-item.primary .vl { color: #000 !important; }
+  .steps li::before { background: #eee !important; color: #000 !important; }
+  .verdict.ok { color: #15803d !important; }
+  .verdict.warn { color: #b45309 !important; }
+  .verdict.bad { color: #b91c1c !important; }
+  .disclaimer { color: #7a4a00 !important; border-color: #e6c46a !important; }
+}

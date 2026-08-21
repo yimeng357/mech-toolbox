@@ -1,6 +1,6 @@
 // 计算结果展示组件:公式 → 计算过程 → 结果 → 说明 → 操作按钮
 import type { CalcResultData } from '../types';
-import { IconCopy, IconSave, IconRotate } from './icons';
+import { IconCopy, IconSave, IconRotate, IconPrint } from './icons';
 
 interface Props {
   data: CalcResultData | null;
@@ -66,6 +66,9 @@ export function CalcResult({ data, hasInput, onCopy, onSave, onReset, saveDisabl
         <button className="btn" onClick={onCopy}><IconCopy size={16} /> 复制结果</button>
         <button className="btn ghost" onClick={onSave} disabled={saveDisabled}>
           <IconSave size={16} /> 保存记录
+        </button>
+        <button className="btn ghost" onClick={() => window.print()}>
+          <IconPrint size={16} /> 导出计算书
         </button>
         <button className="btn ghost" onClick={onReset}><IconRotate size={16} /> 重新计算</button>
       </div>
