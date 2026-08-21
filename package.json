@@ -1,0 +1,27 @@
+{
+  "name": "mech-toolbox",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "机械工程师工具箱 - 面向机械工程师日常使用的综合计算工具箱",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^3.0.0"
+  }
+}
