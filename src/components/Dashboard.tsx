@@ -1,6 +1,7 @@
-// 首页 Dashboard:工具卡片 + 最近使用/常用/最近记录
+// 首页 Dashboard:分组工具卡片 + 最近使用/常用/最近记录
+import type { CSSProperties } from 'react';
 import type { HistoryRecord, ToolId } from '../types';
-import { TOOLS } from '../tools';
+import { TOOLS, TOOL_GROUPS } from '../tools';
 import { IconArrowRight, IconClock } from './icons';
 
 interface Props {
@@ -20,23 +21,42 @@ function fmtTime(ts: number): string {
 
 export function Dashboard({ history, recentIds, popularIds, onOpenTool, onLoadRecord, onViewHistory }: Props) {
   return (
-    <div className="dash">
-      <div>
-        <div className="section-title">计算工具</div>
-        <div className="tool-grid">
-          {TOOLS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <div key={t.id} className="tool-card" onClick={() => onOpenTool(t.id)}>
-                <div className="icon"><Icon size={22} /></div>
-                <div className="nm">{t.name}</div>
-                <div className="ds">{t.desc}</div>
-                <div className="fm">{t.formula}</div>
-                <div className="go">打开工具 <IconArrowRight size={12} /></div>
-              </div>
-            );
-          })}
+    <>
+      <div className="hero">
+        <div>
+          <div className="hero-title">工程师，今天算点什么？</div>
+          <div className="hero-chips">
+            <span className="chip"><b>{TOOLS.length}</b>个专业计算工具</span>
+            <span className="chip"><b>{history.length}</b>条本地计算记录</span>
+            <span className="chip">数据仅存于本机</span>
+          </div>
         </div>
+      </div>
+      <div className="dash">
+      <div>
+        {TOOL_GROUPS.map((group) => (
+          <div
+            key={group.name}
+            className="tool-group"
+            style={{ '--g': group.accent, '--g-soft': group.accentSoft, '--g-glow': group.accentGlow } as CSSProperties}
+          >
+            <div className="section-title">{group.name}<span className="cnt">{group.tools.length} 个</span></div>
+            <div className="tool-grid">
+              {group.tools.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <div key={t.id} className="tool-card" onClick={() => onOpenTool(t.id)}>
+                    <div className="icon"><Icon size={22} /></div>
+                    <div className="nm">{t.name}</div>
+                    <div className="ds">{t.desc}</div>
+                    <div className="fm">{t.formula}</div>
+                    <div className="go">打开工具 <IconArrowRight size={12} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="aside">
@@ -105,5 +125,6 @@ export function Dashboard({ history, recentIds, popularIds, onOpenTool, onLoadRe
         </div>
       </div>
     </div>
+    </>
   );
 }

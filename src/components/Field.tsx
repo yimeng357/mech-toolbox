@@ -1,4 +1,6 @@
-// 通用表单控件:数字输入 / 下拉选择 / 分段选择
+// 通用表单控件:数字输入 / 下拉选择 / 分段选择 / 材料牌号速填
+import type { Material } from '../calc/materials';
+import { findMaterial, materialOptions } from '../calc/materials';
 
 interface NumFieldProps {
   label: string;
@@ -52,6 +54,33 @@ export function NumField({ label, symbol, value, onChange, unit, error, hint, pl
   );
 }
 
+interface TextFieldProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+  hint?: string;
+  placeholder?: string;
+}
+
+export function TextField({ label, value, onChange, error, hint, placeholder }: TextFieldProps) {
+  return (
+    <div className="field">
+      <div className="lbl"><span>{label}</span></div>
+      <div className={`input-wrap ${error ? 'err' : ''}`}>
+        <input
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className={error ? 'err' : ''}
+        />
+      </div>
+      {error ? <div className="err">{error}</div> : hint ? <div className="hint">{hint}</div> : null}
+    </div>
+  );
+}
+
 interface SelectFieldProps {
   label: string;
   value: string;
@@ -97,6 +126,31 @@ export function SegField<T extends string>({ label, value, onChange, options }: 
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** 材料牌号速填选择器:选中后自动填入强度/弹性模量等字段 */
+export function MaterialSelectField({ label = '材料牌号速填', hint, onPick }: {
+  label?: string;
+  hint?: string;
+  onPick: (m: Material | null) => void;
+}) {
+  return (
+    <div className="field">
+      <div className="lbl"><span>{label}</span></div>
+      <select
+        value=""
+        onChange={(e) => {
+          onPick(findMaterial(e.target.value || null));
+          e.currentTarget.selectedIndex = 0;
+        }}
+      >
+        {materialOptions().map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {hint && <div className="hint">{hint}</div>}
     </div>
   );
 }

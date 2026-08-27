@@ -118,3 +118,34 @@ export const IconMotor = (p: IconProps) => (
 export const IconPrint = (p: IconProps) => (
   <Svg {...p}><path d="M6 9V3h12v6" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" rx="1" /></Svg>
 );
+
+// 高压系统工具图标
+export const IconPressure = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5" /><path d="M12 16v1" /></Svg>
+);
+
+export const IconBooster = (p: IconProps) => (
+  <Svg {...p}><rect x="4" y="8" width="8" height="8" rx="1" /><path d="M12 12h5" /><path d="M17 9v6" /><path d="M14 10l3 2-3 2" /></Svg>
+);
+
+export const IconSafety = (p: IconProps) => (
+  <Svg {...p}><path d="M12 3l8 4v5c0 5.25-3.5 9.74-8 11-4.5-1.26-8-5.75-8-11V7l8-4z" /><path d="M9 12l2 2 4-4" /></Svg>
+);
+
+export const IconGas = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2" /><path d="M12 5v2M12 17v2M5 12h2M17 12h2" /></Svg>
+);
+
+export const IconFlow = (p: IconProps) => (
+  <Svg {...p}><path d="M3 12h4l2-3 4 6 2-3h6" /></Svg>
+);
+
+// 管路压力损失图标(管道+流向箭头)
+export const IconPipe = (p: IconProps) => (
+  <Svg {...p}><rect x="3" y="9" width="18" height="6" rx="2" /><path d="M7 12h5" /><path d="m10.5 10.2 1.8 1.8-1.8 1.8" /></Svg>
+);
+
+// 压杆稳定图标(受压弯曲的杆)
+export const IconColumn = (p: IconProps) => (
+  <Svg {...p}><path d="M12 21v-4" /><path d="M12 17c-2.6-1.6-2.6-8.4 0-10" /><path d="M12 17c2.6-1.6 2.6-8.4 0-10" /><path d="M12 7V3" /><path d="M10 4.8 12 2.8l2 2" /></Svg>
+);

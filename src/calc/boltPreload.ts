@@ -85,13 +85,16 @@ export function calcBolt(input: BoltInput, opt: CalcOption = { digits: 2 }): Cal
   const sigma = F / As;          // MPa
   const util = (sigma / sigmaS) * 100;
 
+  // 扭矩法预紧分散度约 ±25%(K 波动所致),利用率上限推荐 ≤70%,严苛工况 ≤60%
   const verdict =
-    util <= 80
-      ? '安全裕度合理(应力利用率 ≤ 80% σs)'
-      : util <= 100
-        ? '接近屈服强度,不建议承受交变动载荷'
-        : '已超过屈服强度,不安全,请降低扭矩或加大规格';
-  const verdictTone: 'ok' | 'warn' | 'bad' = util <= 80 ? 'ok' : util <= 100 ? 'warn' : 'bad';
+    util <= 70
+      ? '安全裕度合理(利用率 ≤70% σs,扭矩法推荐上限)'
+      : util <= 90
+        ? '偏高:考虑 ±25% 预紧分散,存在超拧风险,不建议承受交变载荷'
+        : '危险:接近或超过屈服,必须降低扭矩或加大规格';
+  const verdictTone: 'ok' | 'warn' | 'bad' = util <= 70 ? 'ok' : util <= 90 ? 'warn' : 'bad';
+  const fMin = F * 0.75;
+  const fMax = F * 1.25;
 
   const fmt = (n: number) => fmtNum(n, opt.digits);
 
@@ -105,13 +108,15 @@ export function calcBolt(input: BoltInput, opt: CalcOption = { digits: 2 }): Cal
         `A_s = (π/4)·(d − 0.9382·P)² = (π/4)·(${fmt(D)} − 0.9382×${fmt(P)})² = ${fmt(As)} mm²`,
         `σ = F / A_s = ${fmt(F)} / ${fmt(As)} = ${fmt(sigma)} MPa`,
         `强度等级 ${grade}:屈服强度 σs = ${fmt(sigmaS)} MPa,应力利用率 = ${fmt(util)}%`,
+        `考虑 K 值波动,预紧力分散范围 ≈ ±25%:${fmt(fMin)} ~ ${fmt(fMax)} N`,
       ],
       results: [
         { label: '预紧力 F', value: fmt(F), unit: 'N', primary: true },
         { label: '预紧力 F', value: fmt(F / 1000), unit: 'kN' },
         { label: '螺纹应力面积 A_s', value: fmt(As), unit: 'mm²' },
         { label: '螺栓轴向应力 σ', value: fmt(sigma), unit: 'MPa' },
-        { label: '应力利用率', value: `${fmt(util)}%`, unit: '(vs σs)' },
+        { label: '应力利用率', value: `${fmt(util)}%`, unit: '(vs σs)', tone: verdictTone },
+        { label: '预紧力分散范围(±25%)', value: `${fmt(fMin / 1000)} ~ ${fmt(fMax / 1000)}`, unit: 'kN' },
         { label: '安全判断', value: verdict, tone: verdictTone },
       ],
       note: `扭矩系数 K 的取值对结果影响很大:K 随螺纹与支承面润滑状态在约 0.1~0.3 之间波动。无润滑钢制螺栓可取 0.20,润滑或涂油可取 0.12~0.15。精确设计请参照 GB/T 16823.2、VDI 2230 等方法。`,

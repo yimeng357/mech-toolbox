@@ -1,6 +1,7 @@
 // 通用工具表单 Hook:减少五个工具页重复的状态管理代码
 import { useCallback, useEffect, useState } from 'react';
 import type { CalcOutcome, CalcResultData, HistoryRecord, ToolId } from '../types';
+import { makeHistoryRecord } from './history';
 
 export interface UseToolFormOpts {
   toolId: ToolId;
@@ -62,19 +63,14 @@ export function useToolForm(opts: UseToolFormOpts) {
   const save = useCallback(() => {
     if (!result) return;
     const input = buildInput(form);
-    onSave({
-      id: `h_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    onSave(makeHistoryRecord({
       toolId,
       toolName,
-      time: Date.now(),
-      summary: (() => {
-        const primary = result.results.find((r) => r.primary);
-        return primary ? `${toolName}: ${primary.value}${primary.unit ? ' ' + primary.unit : ''}` : toolName;
-      })(),
+      inputs: { ...form },
       params: makeParams(form),
       copy: copyText(input, digits),
-      inputs: { ...form },
-    });
+      result,
+    }));
   }, [form, result, buildInput, copyText, makeParams, toolId, toolName, digits, onSave]);
 
   return { form, setForm, errors, setErrors, result, setResult, run, reset, copy, save };

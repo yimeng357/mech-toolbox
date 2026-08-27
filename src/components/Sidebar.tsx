@@ -1,6 +1,7 @@
-// 左侧导航
+// 左侧导航(计算工具按专业方向分组展示)
+import { Fragment, type CSSProperties } from 'react';
 import type { ViewName } from '../types';
-import { TOOLS } from '../tools';
+import { TOOL_GROUPS } from '../tools';
 import {
   IconHome, IconRuler, IconClock, IconGear, IconSun, IconMoon,
 } from './icons';
@@ -29,20 +30,30 @@ export function Sidebar({ view, onNavigate, onToggleTheme, dark }: Props) {
         <IconHome size={17} /> <span>首页</span>
       </div>
 
-      <div className="nav-label">机械计算</div>
-      {TOOLS.map((t) => {
-        const Icon = t.icon;
-        const active = view === t.id;
-        return (
-          <div
-            key={t.id}
-            className={active ? 'nav-item active' : 'nav-item'}
-            onClick={() => nav(t.id)}
-          >
-            <Icon size={17} /> <span>{t.name}</span>
+      {TOOL_GROUPS.map((group) => (
+        <Fragment key={group.name}>
+          <div className="nav-label" style={{ '--g': group.accent } as CSSProperties}>
+            <i className="dot" /> <span>{group.name}</span>
           </div>
-        );
-      })}
+          {group.tools.map((t) => {
+            const Icon = t.icon;
+            const active = view === t.id;
+            const gVars: CSSProperties | undefined = active
+              ? { '--g': group.accent, '--g-glow': group.accentGlow } as CSSProperties
+              : undefined;
+            return (
+              <div
+                key={t.id}
+                className={active ? 'nav-item active' : 'nav-item'}
+                style={gVars}
+                onClick={() => nav(t.id)}
+              >
+                <Icon size={17} /> <span>{t.name}</span>
+              </div>
+            );
+          })}
+        </Fragment>
+      ))}
 
       <div className="nav-label">工具</div>
       <div className={view === 'convert' ? 'nav-item active' : 'nav-item'} onClick={() => nav('convert')}>

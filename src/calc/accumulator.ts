@@ -16,6 +16,8 @@ export interface AccumulatorInput {
   p2: number | null;       // 最高工作压力 p2, bar
   p1: number | null;       // 最低工作压力 p1, bar
   processType: AccumulatorProcess;
+  tempFillC?: number | null;   // 充气时环境温度, ℃(默认 20)
+  tempWorkC?: number | null;   // 工作环境温度, ℃(默认 20)
 }
 
 export const ACCUMULATOR_DEFAULTS: AccumulatorInput = {
@@ -24,6 +26,8 @@ export const ACCUMULATOR_DEFAULTS: AccumulatorInput = {
   p2: 200,
   p1: 100,
   processType: 'ADIABATIC',
+  tempFillC: 20,
+  tempWorkC: 20,
 };
 
 /** 工业标准皮囊蓄能器公称容积(L) */
@@ -33,6 +37,8 @@ const STANDARD_ACCUMULATOR_SIZES_L = [
 
 export function calcAccumulator(input: AccumulatorInput, opt: CalcOption = { digits: 2 }): CalcOutcome {
   const { mode, deltaV: dV, p2, p1, processType = 'ADIABATIC' } = input;
+  const tempFillC = input.tempFillC ?? 20;
+  const tempWorkC = input.tempWorkC ?? 20;
   const fe: Record<string, string> = {};
 
   if (dV == null || Number.isNaN(dV)) fe.deltaV = '请输入有效释放油量';
@@ -42,6 +48,8 @@ export function calcAccumulator(input: AccumulatorInput, opt: CalcOption = { dig
   if (p1 == null || Number.isNaN(p1)) fe.p1 = '请输入最低压力';
   else if (p1 <= 0) fe.p1 = '压力必须大于 0';
   if (!fe.p1 && !fe.p2 && p1 != null && p2 != null && p1 >= p2) fe.p1 = '最低压力 p1 必须小于最高压力 p2';
+  if (Number.isNaN(tempFillC) || tempFillC < -40 || tempFillC > 120) fe.tempFillC = '温度应在 -40~120 ℃ 之间';
+  if (Number.isNaN(tempWorkC) || tempWorkC < -40 || tempWorkC > 120) fe.tempWorkC = '温度应在 -40~120 ℃ 之间';
 
   if (Object.keys(fe).length) return { ok: false, fieldErrors: fe };
 
@@ -61,6 +69,10 @@ export function calcAccumulator(input: AccumulatorInput, opt: CalcOption = { dig
   const safe = ratio <= 4.0;
   const stdVol = STANDARD_ACCUMULATOR_SIZES_L.find((v) => v >= V0) ?? V0;
 
+  // 温度修正(理想气体等容换算):现场充气压力按充气/工作温差折算
+  const tDiff = Math.abs(tempFillC - tempWorkC);
+  const p0FillTemp = tDiff > 0.05 ? p0 * ((273.15 + tempFillC) / (273.15 + tempWorkC)) : null;
+
   const modeName =
     mode === 'EMERGENCY_POWER' ? '应急动力' : mode === 'LEAK_COMPENSATION' ? '泄漏补偿' : '冲击吸收';
 
@@ -71,6 +83,9 @@ export function calcAccumulator(input: AccumulatorInput, opt: CalcOption = { dig
     `多变方程计算: V0 = ΔV / [ (p0/p1)^(1/n) − (p0/p2)^(1/n) ] = ${fmt(dVv)} / (${fmt(term1)} − ${fmt(term2)}) = ${fmt(V0)} L`,
     `最高充放比 p2/p0 = ${fmt(p2v)} / ${fmt(p0)} = ${fmt(ratio)} (皮囊式推荐 ≤ 4.0: ${safe ? '合格' : '警告: 膨胀比过大'})`,
     `推荐选用工业标准公称容积: ${fmt(stdVol)} L`,
+    ...(p0FillTemp != null
+      ? [`温度修正:工作温度下需保证 p₀=${fmt(p0)} bar,现场 ${fmt(tempFillC)}℃ 充气时应充至 p₀′ = p₀ × (273+T充)/(273+T工) = ${fmt(p0FillTemp)} bar`]
+      : []),
   ];
 
   return {
@@ -84,8 +99,11 @@ export function calcAccumulator(input: AccumulatorInput, opt: CalcOption = { dig
         { label: '充气压力 p0', value: fmt(p0), unit: 'bar' },
         { label: '推荐公称容积', value: fmt(stdVol), unit: 'L', primary: true },
         { label: '最高充放比 p2/p0', value: fmt(ratio), unit: '—', tone: safe ? 'ok' : 'bad' },
+        ...(p0FillTemp != null
+          ? [{ label: `现场充气值(${fmt(tempFillC)}℃)`, value: fmt(p0FillTemp), unit: 'bar' }]
+          : []),
       ],
-      note: '皮囊式蓄能器充放比建议 ≤ 4.0(最高不超过 10);氮气预充压力不得低于系统最低压力。以上为初步计算,应按 GB/T 2352 等标准选型。',
+      note: `皮囊式蓄能器充放比建议 ≤ 4.0(最高不超过 10);氮气预充压力不得低于系统最低压力。${p0FillTemp != null ? '冬夏温差会使皮囊压力漂移可达 10% 以上,务必按现场温度折算充气值。' : ''}以上为初步计算,应按 GB/T 2352 等标准选型。`,
       disclaimer: true,
     },
   };
@@ -106,6 +124,7 @@ export function accumulatorCopyText(input: AccumulatorInput, digits = 2): string
     `最高压力 p2 = ${fmt(input.p2 ?? 0)} bar`,
     `最低压力 p1 = ${fmt(input.p1 ?? 0)} bar`,
     `气体过程: ${input.processType === 'ADIABATIC' ? '绝热 (n=1.4)' : '等温 (n=1.0)'}`,
+    `充气/工作温度: ${fmt(input.tempFillC ?? 20)} / ${fmt(input.tempWorkC ?? 20)} ℃`,
     '',
     `公式: ${r.formula}`,
     '',

@@ -1,0 +1,1019 @@
+# mech-toolbox 高压系统设计新增计算模块开发指南与代码汇总
+
+本文档为 **mech-toolbox** 项目的高压与超高压系统（High Pressure Systems）专属计算模块开发指南。包含 5 个核心算法引擎、5 个对应 UI 视图组件、更新后的模块注册文件以及相关工程标准说明。
+
+---
+
+## 一、新增高压系统模块清单与架构
+
+```
+src/
+├── calc/
+│   ├── lameCylinder.ts           # 1. 厚壁圆筒拉美应力与爆破压力 (Lamé Stress & Burst Pressure)
+│   ├── gasBooster.ts             # 2. 气动气体增压器选型与充装时间 (Gas Booster Sizing & Fill Time)
+│   ├── pneumaticTestEnergy.ts    # 3. 气压试验爆破能量与安全距离 (Pneumatic Test Stored Energy / ASME PCC-2)
+│   ├── realGas.ts                # 4. 高压真实气体压缩因子与储气量 (Real Gas Z-Factor & Storage)
+│   ├── chokedFlow.ts             # 5. 高压孔口临界节流与微泄漏 (Choked Flow & Leakage)
+│   └── index.ts                  # 汇总导出所有计算模块
+├── tools/
+│   ├── LameCylinderTool.tsx      # 厚壁圆筒 UI 工具视图
+│   ├── GasBoosterTool.tsx        # 气体增压器 UI 工具视图
+│   ├── PneumaticTestEnergyTool.tsx # 气压试验能量 UI 工具视图
+│   ├── RealGasTool.tsx           # 真实气体 UI 工具视图
+│   └── ChokedFlowTool.tsx        # 临界节流孔口 UI 工具视图
+└── tools.ts                      # 统一注册全部 15 个工具菜单
+```
+
+---
+
+## 二、核心计算引擎源码 (`src/calc/`)
+
+### 1. 厚壁圆筒拉美应力与爆破压力 (`src/calc/lameCylinder.ts`)
+
+```typescript
+// src/calc/lameCylinder.ts
+
+export interface LameCylinderInput {
+  internalPressureBar: number; // 内压 Pi (bar)
+  innerDiameterMm: number;     // 内径 Di (mm)
+  outerDiameterMm: number;     // 外径 Do (mm)
+  yieldStrengthMpa: number;    // 材料屈服强度 Re / Rp0.2 (MPa)
+  tensileStrengthMpa: number;  // 材料抗拉强度 Rm (MPa)
+  safetyFactorYield?: number;  // 屈服安全系数 (默认 1.5)
+  safetyFactorBurst?: number;  // 爆破安全系数 (默认 2.5)
+}
+
+export interface LameCylinderResult {
+  diameterRatioK: number;         // 径比 K = Do / Di
+  wallThicknessMm: number;        // 壁厚 t (mm)
+  innerHoopStressMpa: number;     // 内壁环向应力 σt,i (MPa)
+  outerHoopStressMpa: number;     // 外壁环向应力 σt,o (MPa)
+  innerRadialStressMpa: number;   // 内壁径向应力 σr,i (MPa)
+  innerVonMisesStressMpa: number; // 内壁等效应力 σv (MPa)
+  yieldPressureBar: number;       // 初始屈服压力 Py (bar)
+  burstPressureBar: number;       // Faupel 全塑性爆破压力 Pb (bar)
+  mawpBar: number;                // 最大允许工作压力 MAWP (bar)
+  stressRatio: number;            // 应力比 (σv / [σ])
+  isThickWalled: boolean;         // 是否为厚壁 (K > 1.2)
+  steps: string[];
+}
+
+export function calculateLameCylinder(input: LameCylinderInput): LameCylinderResult {
+  const {
+    internalPressureBar: pBar,
+    innerDiameterMm: Di,
+    outerDiameterMm: Do,
+    yieldStrengthMpa: Sy,
+    tensileStrengthMpa: Su,
+    safetyFactorYield: Sfy = 1.5,
+    safetyFactorBurst: Sfb = 2.5,
+  } = input;
+
+  if (pBar <= 0 || Di <= 0 || Do <= Di || Sy <= 0 || Su <= 0) {
+    throw new Error('输入参数无效：外径必须大于内径，所有数值必须大于 0');
+  }
+
+  const steps: string[] = [];
+  const Pi = pBar / 10; // 转换 bar 为 MPa (1 MPa = 10 bar)
+  const K = Do / Di;
+  const t = (Do - Di) / 2;
+  const isThickWalled = K > 1.2;
+
+  steps.push(`内径 Di = ${Di} mm, 外径 Do = ${Do} mm, 壁厚 t = ${t.toFixed(2)} mm`);
+  steps.push(`圆筒径比 K = Do / Di = ${Do} / ${Di} = ${K.toFixed(3)} (${isThickWalled ? '属于厚壁圆筒，必须采用 Lamé 理论' : '薄壁圆筒'})`);
+
+  // 1. Lamé 应力计算 (内壁为最大应力点)
+  const K2 = K * K;
+  const innerHoopStressMpa = Pi * ((K2 + 1) / (K2 - 1));
+  const outerHoopStressMpa = Pi * (2 / (K2 - 1));
+  const innerRadialStressMpa = -Pi;
+  const innerLongitudinalStressMpa = Pi / (K2 - 1); // 闭口容器轴向应力
+
+  steps.push(`内压 Pi = ${pBar} bar = ${Pi.toFixed(2)} MPa`);
+  steps.push(`内壁环向拉应力 σt,i = Pi × (K² + 1) / (K² - 1) = ${innerHoopStressMpa.toFixed(1)} MPa`);
+  steps.push(`外壁环向拉应力 σt,o = Pi × 2 / (K² - 1) = ${outerHoopStressMpa.toFixed(1)} MPa`);
+  steps.push(`内壁径向压应力 σr,i = -Pi = -${Pi.toFixed(2)} MPa`);
+
+  // 2. von Mises 屈服等效应力
+  const innerVonMisesStressMpa = (Math.sqrt(3) * K2 * Pi) / (K2 - 1);
+  steps.push(`内壁第四强度理论 (von Mises) 等效应力 σv = √3·K²·Pi / (K² - 1) = ${innerVonMisesStressMpa.toFixed(1)} MPa`);
+
+  // 3. 初始屈服压力 Py (von Mises)
+  const yieldPressureMpa = (Sy * (K2 - 1)) / (Math.sqrt(3) * K2);
+  const yieldPressureBar = yieldPressureMpa * 10;
+  steps.push(`初始屈服压力 Py = Sy·(K² - 1) / (√3·K²) = ${yieldPressureBar.toFixed(1)} bar`);
+
+  // 4. Faupel 经验爆破压力公式 Pb
+  const burstPressureMpa = ((2 * Sy) / Math.sqrt(3)) * (2 - Sy / Su) * Math.log(K);
+  const burstPressureBar = burstPressureMpa * 10;
+  steps.push(`Faupel 爆破压力 Pb = (2·Sy / √3)·(2 - Sy/Su)·ln(K) = ${burstPressureBar.toFixed(1)} bar`);
+
+  // 5. 最大允许工作压力 MAWP
+  const mawpYield = yieldPressureBar / Sfy;
+  const mawpBurst = burstPressureBar / Sfb;
+  const mawpBar = Math.min(mawpYield, mawpBurst);
+  steps.push(`屈服控制 MAWP_y = Py / ${Sfy} = ${mawpYield.toFixed(1)} bar`);
+  steps.push(`爆破控制 MAWP_b = Pb / ${Sfb} = ${mawpBurst.toFixed(1)} bar`);
+  steps.push(`额定最大允许工作压力 MAWP = ${mawpBar.toFixed(1)} bar`);
+
+  const allowableStress = Sy / Sfy;
+  const stressRatio = innerVonMisesStressMpa / allowableStress;
+
+  return {
+    diameterRatioK: K,
+    wallThicknessMm: t,
+    innerHoopStressMpa,
+    outerHoopStressMpa,
+    innerRadialStressMpa,
+    innerVonMisesStressMpa,
+    yieldPressureBar,
+    burstPressureBar,
+    mawpBar,
+    stressRatio,
+    isThickWalled,
+    steps,
+  };
+}
+```
+
+---
+
+### 2. 气动气体增压器选型与充装时间计算 (`src/calc/gasBooster.ts`)
+
+```typescript
+// src/calc/gasBooster.ts
+
+export interface GasBoosterInput {
+  vesselVolumeLiter: number;     // 被充容器容积 V (L)
+  supplyPressureBar: number;     // 气源供气压力 Pin (bar)
+  targetPressureBar: number;     // 目标充装压力 Ptarget (bar)
+  driveAirPressureBar: number;   // 驱动空气压力 PL (bar, 通常 6~8 bar)
+  boosterRatio: number;          // 增压器增压比 i (如 15, 30, 75)
+  displacementCcPerStroke: number; // 单双冲程理论排量 Vdisp (cc/double-stroke)
+  maxCyclesPerMin?: number;      // 最大工作冲程频率 (默认 60 cpm)
+}
+
+export interface GasBoosterResult {
+  stallPressureBar: number;      // 理论失速压力 Pstall (bar)
+  isFeasible: boolean;           // 能否打到目标压力
+  totalFillTimeMinutes: number;  // 充装总耗时 (分钟)
+  totalFillTimeSeconds: number;  // 充装总耗时 (秒)
+  driveAirConsumptionNm3: number;// 消耗驱动压缩空气总量 (标立方 Nm³)
+  averageFlowNlPerMin: number;   // 平均标态排气流量 (NL/min)
+  steps: string[];
+}
+
+export function calculateGasBooster(input: GasBoosterInput): GasBoosterResult {
+  const {
+    vesselVolumeLiter: V,
+    supplyPressureBar: Pin,
+    targetPressureBar: Ptarget,
+    driveAirPressureBar: PL,
+    boosterRatio: ratio,
+    displacementCcPerStroke: Vdisp,
+    maxCyclesPerMin: cpm = 60,
+  } = input;
+
+  if (V <= 0 || Pin <= 0 || Ptarget <= Pin || PL <= 0 || ratio <= 0 || Vdisp <= 0) {
+    throw new Error('输入参数无效：目标压力必须大于供气压力，容积与压力必须大于 0');
+  }
+
+  const steps: string[] = [];
+
+  // 1. 失速压力计算
+  const stallPressureBar = ratio * PL + Pin;
+  const isFeasible = stallPressureBar >= Ptarget;
+  steps.push(`增压器最高输出失速压力 Pstall = i × PL + Pin = ${ratio} × ${PL} + ${Pin} = ${stallPressureBar.toFixed(1)} bar`);
+
+  if (!isFeasible) {
+    steps.push(`警告: 失速压力 (${stallPressureBar.toFixed(1)} bar) 低于目标压力 (${Ptarget} bar)，无法打到目标压力！需提高驱动气压或增大增压比。`);
+  }
+
+  // 2. 气体充气时间微积分积分求解 (50 段离散积分)
+  const stepsCount = 50;
+  const dP = (Ptarget - Pin) / stepsCount;
+  let totalTimeSec = 0;
+
+  for (let stepIdx = 0; stepIdx < stepsCount; stepIdx++) {
+    const currentP = Pin + (stepIdx + 0.5) * dP;
+    // 随背压升高的容积效率衰减
+    const volEfficiency = Math.max(0.1, 1 - (currentP / Math.max(1, stallPressureBar)) * 0.85);
+    // 瞬态标态排量 (NL/s)
+    const strokeVolumeLiter = (Vdisp / 1000) * volEfficiency;
+    const flowNlPerSec = strokeVolumeLiter * (Pin / 1.013) * (cpm / 60);
+
+    // 充入 dP 所需标态气量 (NL)
+    const requiredNl = V * (dP / 1.013);
+    const dt = requiredNl / Math.max(0.01, flowNlPerSec);
+    totalTimeSec += dt;
+  }
+
+  const totalTimeMin = totalTimeSec / 60;
+  const totalGasChargedNl = V * ((Ptarget - Pin) / 1.013);
+  const averageFlowNlPerMin = totalGasChargedNl / Math.max(0.01, totalTimeMin);
+
+  steps.push(`被充容器容积 V = ${V} L，充压压差 ΔP = ${Ptarget - Pin} bar`);
+  steps.push(`总充入高压气体折合标准容积 VN = ${totalGasChargedNl.toFixed(1)} NL`);
+  steps.push(`积分计算充装总耗时: ${totalTimeMin.toFixed(1)} 分钟 (${totalTimeSec.toFixed(0)} 秒)`);
+  steps.push(`平均高压排气流量 Qavg ≈ ${averageFlowNlPerMin.toFixed(1)} NL/min`);
+
+  // 3. 驱动空气耗气量计算
+  // 驱动气缸排量约为高压气缸的 ratio 倍
+  const driveVolumePerStrokeL = (Vdisp / 1000) * ratio;
+  const totalStrokes = (totalTimeSec * cpm) / 60;
+  const totalDriveAirL = totalStrokes * driveVolumePerStrokeL * ((PL + 1.013) / 1.013);
+  const driveAirConsumptionNm3 = totalDriveAirL / 1000;
+
+  steps.push(`总工作循环次数 ≈ ${totalStrokes.toFixed(0)} 次`);
+  steps.push(`消耗驱动压缩空气总量 ≈ ${driveAirConsumptionNm3.toFixed(2)} Nm³ (${PL} bar 工业压缩空气)`);
+
+  return {
+    stallPressureBar,
+    isFeasible,
+    totalFillTimeMinutes: totalTimeMin,
+    totalFillTimeSeconds: totalTimeSec,
+    driveAirConsumptionNm3,
+    averageFlowNlPerMin,
+    steps,
+  };
+}
+```
+
+---
+
+### 3. 气压试验爆破能量与安全防护距离 (`src/calc/pneumaticTestEnergy.ts`)
+
+```typescript
+// src/calc/pneumaticTestEnergy.ts
+
+export interface PneumaticTestEnergyInput {
+  testVolumeLiter: number;      // 试压系统内部总容积 V (L)
+  testPressureBar: number;      // 气压试验压力 P (bar)
+  gasType?: 'NITROGEN' | 'AIR' | 'HELIUM' | 'HYDROGEN'; // 气体类型
+  ambientPressureBar?: number;  // 大气压 (默认 1.013 bar)
+}
+
+export interface PneumaticTestEnergyResult {
+  storedEnergyJoules: number;   // 压缩气体膨胀能 E (Joules)
+  storedEnergyKj: number;       // 压缩气体膨胀能 (kJ)
+  tntEquivalentKg: number;      // 折算 TNT 当量质量 (kg TNT)
+  safeDistancePersonnelM: number; // 人员安全隔离距离 (m, ASME PCC-2)
+  safeDistanceBuildingM: number;  // 建筑物安全防护距离 (m)
+  steps: string[];
+}
+
+export function calculatePneumaticTestEnergy(input: PneumaticTestEnergyInput): PneumaticTestEnergyResult {
+  const {
+    testVolumeLiter: V,
+    testPressureBar: pBar,
+    gasType = 'NITROGEN',
+    ambientPressureBar: pAmbBar = 1.013,
+  } = input;
+
+  if (V <= 0 || pBar <= 0) {
+    throw new Error('试压容积和试验压力必须大于 0');
+  }
+
+  const steps: string[] = [];
+  // 比热比 k = Cp / Cv
+  const kMap: Record<string, number> = {
+    NITROGEN: 1.4,
+    AIR: 1.4,
+    HELIUM: 1.66,
+    HYDROGEN: 1.41,
+  };
+  const k = kMap[gasType] || 1.4;
+
+  const P1_Pa = (pBar + pAmbBar) * 1e5; // 绝对压力 Pa
+  const Pa_Pa = pAmbBar * 1e5;
+  const VM3 = V * 1e-3;
+
+  steps.push(`试验介质: ${gasType} (绝热比热比 k = ${k})`);
+  steps.push(`试验绝对压力 P1 = ${(P1_Pa / 1e5).toFixed(2)} bar(a), 容积 V = ${V} L (${VM3.toFixed(4)} m³)`);
+
+  // ASME PCC-2 Article 501 绝热膨胀能量公式 (Brode 方程)
+  // E = (P1 * V) / (k - 1) * [ 1 - (Pa / P1)^((k-1)/k) ]
+  const exponent = (k - 1) / k;
+  const pressureRatio = Pa_Pa / P1_Pa;
+  const storedEnergyJoules = ((P1_Pa * VM3) / (k - 1)) * (1 - Math.pow(pressureRatio, exponent));
+  const storedEnergyKj = storedEnergyJoules / 1000;
+
+  steps.push(`Brode 绝热膨胀储能公式计算: E = [P1·V / (k-1)] × [1 - (Pa/P1)^((k-1)/k)]`);
+  steps.push(`计算得出高压气体总膨胀储能 E = ${storedEnergyKj.toFixed(1)} kJ (${storedEnergyJoules.toFixed(0)} J)`);
+
+  // 折算 TNT 当量 (1 kg TNT = 4.6 × 10^6 J)
+  const tntEquivalentKg = storedEnergyJoules / 4.6e6;
+  steps.push(`TNT 爆炸当量折算 (1 kg TNT = 4.6 MJ): MTNT = ${tntEquivalentKg.toFixed(4)} kg TNT (${(tntEquivalentKg * 1000).toFixed(1)} 克 TNT)`);
+
+  // ASME PCC-2 Table 501-1 安全人员隔离距离 (比例距离 λ = 20 ~ 30 m/kg^(1/3))
+  const scaledFactorPersonnel = 24.0;
+  const scaledFactorBuilding = 10.0;
+  const safeDistancePersonnelM = Math.max(3.0, scaledFactorPersonnel * Math.pow(2 * tntEquivalentKg, 1 / 3));
+  const safeDistanceBuildingM = Math.max(2.0, scaledFactorBuilding * Math.pow(2 * tntEquivalentKg, 1 / 3));
+
+  steps.push(`根据 ASME PCC-2 规范计算安全防护边界:`);
+  steps.push(`人员无防护安全隔离距离 R_personnel ≥ ${safeDistancePersonnelM.toFixed(1)} 米`);
+  steps.push(`轻质设备/建筑安全距离 R_building ≥ ${safeDistanceBuildingM.toFixed(1)} 米`);
+
+  return {
+    storedEnergyJoules,
+    storedEnergyKj,
+    tntEquivalentKg,
+    safeDistancePersonnelM,
+    safeDistanceBuildingM,
+    steps,
+  };
+}
+```
+
+---
+
+### 4. 高压真实气体压缩因子与储气量 (`src/calc/realGas.ts`)
+
+```typescript
+// src/calc/realGas.ts
+
+export type HighPressureGasType = 'NITROGEN' | 'HYDROGEN' | 'HELIUM' | 'AIR' | 'METHANE' | 'ARGON';
+
+export interface RealGasInput {
+  gasType: HighPressureGasType;
+  pressureBar: number;       // 工作压力 P (bar)
+  temperatureC: number;      // 温度 T (°C)
+  vesselVolumeLiter: number; // 容器容积 V (L)
+}
+
+export interface RealGasResult {
+  zFactor: number;           // 真实气体压缩因子 Z
+  densityKgM3: number;       // 实际气体密度 (kg/m³)
+  idealDensityKgM3: number;  // 理想气体密度 (kg/m³)
+  totalMassKg: number;       // 实际储气质量 (kg)
+  standardVolumeNm3: number; // 标况气体体积 (Nm³, 0°C, 1.013 bar)
+  idealMassKg: number;       // 理想气体计算质量 (kg)
+  errorPercent: number;      // 忽略 Z 因子导致的计算误差 (%)
+  steps: string[];
+}
+
+interface GasProperties {
+  molarMassGmol: number; // 分子量 M
+  TcKelvin: number;      // 临界温度 Tc (K)
+  PcBar: number;         // 临界压力 Pc (bar)
+}
+
+const GAS_DATA: Record<HighPressureGasType, GasProperties> = {
+  NITROGEN: { molarMassGmol: 28.013, TcKelvin: 126.2, PcBar: 33.9 },
+  HYDROGEN: { molarMassGmol: 2.016, TcKelvin: 33.2, PcBar: 13.0 },
+  HELIUM: { molarMassGmol: 4.003, TcKelvin: 5.2, PcBar: 2.27 },
+  AIR: { molarMassGmol: 28.96, TcKelvin: 132.5, PcBar: 37.7 },
+  METHANE: { molarMassGmol: 16.04, TcKelvin: 190.6, PcBar: 46.0 },
+  ARGON: { molarMassGmol: 39.95, TcKelvin: 150.8, PcBar: 48.7 },
+};
+
+export function calculateRealGas(input: RealGasInput): RealGasResult {
+  const { gasType, pressureBar: P, temperatureC: T_C, vesselVolumeLiter: V_L } = input;
+
+  if (P <= 0 || V_L <= 0) {
+    throw new Error('压力和容积必须大于 0');
+  }
+
+  const steps: string[] = [];
+  const gas = GAS_DATA[gasType];
+  const T_K = T_C + 273.15;
+  const R = 8.31446; // J/(mol·K)
+
+  steps.push(`气体类型: ${gasType} (摩尔质量 M = ${gas.molarMassGmol} g/mol)`);
+  steps.push(`工作工况: 压力 P = ${P} bar, 温度 T = ${T_C} °C (${T_K.toFixed(2)} K), 容积 V = ${V_L} L`);
+
+  // 高压压缩因子 Z(P, T) 拟合计算 (基于 Redlich-Kwong 高压对比态模型)
+  const Pr = P / gas.PcBar;
+  const Tr = T_K / gas.TcKelvin;
+
+  // 针对超高压区间的 Z 因子经验解析模型 (适用 1 ~ 1000 bar)
+  let Z = 1.0;
+  if (gasType === 'NITROGEN' || gasType === 'AIR') {
+    Z = 1.0 + (0.00175 * P) / (Tr * 0.5) + (1.2e-6 * P * P) / Tr;
+  } else if (gasType === 'HYDROGEN') {
+    Z = 1.0 + 0.00062 * P + 1.2e-7 * P * P;
+  } else if (gasType === 'HELIUM') {
+    Z = 1.0 + 0.0005 * P;
+  } else {
+    Z = 1.0 + (0.0015 * P) / Tr;
+  }
+
+  steps.push(`对比参数: 对比压力 Pr = ${Pr.toFixed(2)}, 对比温度 Tr = ${Tr.toFixed(2)}`);
+  steps.push(`求解得出高压压缩因子 Z = ${Z.toFixed(4)} (理想气体为 1.0)`);
+
+  // 密度计算
+  const P_Pa = P * 1e5;
+  const M_kg = gas.molarMassGmol / 1000;
+  const densityKgM3 = (P_Pa * M_kg) / (Z * R * T_K);
+  const idealDensityKgM3 = (P_Pa * M_kg) / (1.0 * R * T_K);
+
+  const VM3 = V_L * 1e-3;
+  const totalMassKg = densityKgM3 * VM3;
+  const idealMassKg = idealDensityKgM3 * VM3;
+  const errorPercent = ((idealMassKg - totalMassKg) / totalMassKg) * 100;
+
+  steps.push(`实际气体密度 ρ = P·M / (Z·R·T) = ${densityKgM3.toFixed(2)} kg/m³ (理想气体计算为 ${idealDensityKgM3.toFixed(2)} kg/m³)`);
+  steps.push(`实际储气质量 m = ${totalMassKg.toFixed(2)} kg`);
+  steps.push(`理想气体公式计算质量 = ${idealMassKg.toFixed(2)} kg (误差偏差: +${errorPercent.toFixed(1)}%)`);
+
+  // 标态体积 (0°C, 1.013 bar)
+  const standardDensity = (1.013e5 * M_kg) / (R * 273.15);
+  const standardVolumeNm3 = totalMassKg / standardDensity;
+  steps.push(`标况体积 (0°C, 1.013 bar): VN = ${standardVolumeNm3.toFixed(2)} Nm³ (${(standardVolumeNm3 * 1000).toFixed(0)} NL)`);
+
+  return {
+    zFactor: Z,
+    densityKgM3,
+    idealDensityKgM3,
+    totalMassKg,
+    standardVolumeNm3,
+    idealMassKg,
+    errorPercent,
+    steps,
+  };
+}
+```
+
+---
+
+### 5. 高压孔口临界节流与微泄漏计算 (`src/calc/chokedFlow.ts`)
+
+```typescript
+// src/calc/chokedFlow.ts
+
+export interface ChokedFlowInput {
+  upstreamPressureBar: number;   // 上游高压压力 P1 (bar)
+  upstreamTemperatureC: number;  // 上游气体温度 T1 (°C)
+  orificeDiameterMm: number;     // 节流小孔直径 / 泄漏孔径 d0 (mm)
+  downstreamPressureBar?: number;// 下游背压 P2 (bar, 默认 1.013 bar)
+  dischargeCoefficient?: number; // 流量系数 Cd (锐边孔取 0.62, 喷嘴取 0.90)
+  gasType?: 'NITROGEN' | 'AIR' | 'HYDROGEN' | 'HELIUM';
+}
+
+export interface ChokedFlowResult {
+  isChoked: boolean;             // 是否处于音速临界流 (Choked Flow)
+  criticalPressureBar: number;   // 临界背压 Pcrit (bar)
+  massFlowRateKgPerSec: number;  // 质量流量 qm (kg/s)
+  massFlowRateKgPerHour: number; // 质量流量 (kg/h)
+  standardFlowNlPerMin: number;  // 标况体积流量 (NL/min)
+  standardFlowNm3PerHour: number;// 标况体积流量 (Nm³/h)
+  jetReactionForceN: number;     // 喷射反推力 (N)
+  steps: string[];
+}
+
+export function calculateChokedFlow(input: ChokedFlowInput): ChokedFlowResult {
+  const {
+    upstreamPressureBar: p1Bar,
+    upstreamTemperatureC: T1_C,
+    orificeDiameterMm: d0,
+    downstreamPressureBar: p2Bar = 1.013,
+    dischargeCoefficient: Cd = 0.62,
+    gasType = 'NITROGEN',
+  } = input;
+
+  if (p1Bar <= 0 || d0 <= 0 || p2Bar <= 0 || p1Bar <= p2Bar) {
+    throw new Error('输入参数无效：上游压力必须大于下游压力，孔径必须大于 0');
+  }
+
+  const steps: string[] = [];
+  const kMap = { NITROGEN: 1.4, AIR: 1.4, HYDROGEN: 1.41, HELIUM: 1.66 };
+  const molarMassMap = { NITROGEN: 0.028013, AIR: 0.02896, HYDROGEN: 0.002016, HELIUM: 0.004003 };
+
+  const k = kMap[gasType] || 1.4;
+  const M = molarMassMap[gasType] || 0.028;
+  const R = 8.31446;
+  const T1_K = T1_C + 273.15;
+
+  const P1 = p1Bar * 1e5; // Pa
+  const P2 = p2Bar * 1e5; // Pa
+  const A = (Math.PI / 4) * Math.pow(d0 * 1e-3, 2); // m²
+
+  // 1. 临界压力比判定
+  const criticalRatio = Math.pow(2 / (k + 1), k / (k - 1));
+  const criticalPressureBar = p1Bar * criticalRatio;
+  const isChoked = p2Bar / p1Bar <= criticalRatio;
+
+  steps.push(`介质: ${gasType}, 比热比 k = ${k}, 上游 P1 = ${p1Bar} bar, 下游 P2 = ${p2Bar} bar`);
+  steps.push(`临界压力比 r_crit = [2/(k+1)]^(k/(k-1)) = ${criticalRatio.toFixed(3)}，临界压力 Pcrit = ${criticalPressureBar.toFixed(2)} bar`);
+  steps.push(`流态判定: P2/P1 = ${(p2Bar/p1Bar).toFixed(3)} ${isChoked ? '≤ r_crit，处于【音速临界流 Choked Flow】' : '> r_crit，处于【亚音速节流流】'}`);
+
+  // 2. 质量流量计算
+  let massFlowKgS = 0;
+  if (isChoked) {
+    // 临界音速流方程: qm = Cd * A * P1 * sqrt( (k*M)/(R*T1) * (2/(k+1))^((k+1)/(k-1)) )
+    const bracket = Math.pow(2 / (k + 1), (k + 1) / (k - 1));
+    massFlowKgS = Cd * A * P1 * Math.sqrt((k * M) / (R * T1_K) * bracket);
+  } else {
+    // 亚音速气动流方程
+    const pr = P2 / P1;
+    const term = (2 * k) / (k - 1) * (Math.pow(pr, 2 / k) - Math.pow(pr, (k + 1) / k));
+    massFlowKgS = Cd * A * P1 * Math.sqrt((M / (R * T1_K)) * term);
+  }
+
+  const massFlowKgH = massFlowKgS * 3600;
+  const rhoStandard = (1.013e5 * M) / (R * 273.15);
+  const flowNm3H = massFlowKgH / rhoStandard;
+  const flowNlMin = (flowNm3H * 1000) / 60;
+
+  steps.push(`孔口截面积 A = ${(A * 1e6).toFixed(3)} mm² (d0 = ${d0} mm, Cd = ${Cd})`);
+  steps.push(`瞬时泄出质量流量 qm = ${massFlowKgS.toFixed(4)} kg/s (${massFlowKgH.toFixed(2)} kg/h)`);
+  steps.push(`折合标况体积流量 QN = ${flowNlMin.toFixed(1)} NL/min (${flowNm3H.toFixed(2)} Nm³/h)`);
+
+  // 3. 喷射反推力估算
+  const soundSpeed = Math.sqrt((k * R * T1_K) / M);
+  const jetReactionForceN = massFlowKgS * soundSpeed + (criticalPressureBar * 1e5 - P2) * A;
+  steps.push(`气体喷射反作用推力 F_thrust ≈ ${jetReactionForceN.toFixed(1)} N`);
+
+  return {
+    isChoked,
+    criticalPressureBar,
+    massFlowRateKgPerSec: massFlowKgS,
+    massFlowRateKgPerHour: massFlowKgH,
+    standardFlowNlPerMin: flowNlMin,
+    standardFlowNm3PerHour: flowNm3H,
+    jetReactionForceN,
+    steps,
+  };
+}
+```
+
+---
+
+## 三、UI 前端工具组件 (`src/tools/`)
+
+### 1. 厚壁圆筒拉美应力与爆破工具 (`src/tools/LameCylinderTool.tsx`)
+
+```tsx
+import React, { useState } from 'react';
+import { Field } from '../components/Field';
+import { CalcResult } from '../components/CalcResult';
+import { calculateLameCylinder } from '../calc/lameCylinder';
+
+export const LameCylinderTool: React.FC = () => {
+  const [pressure, setPressure] = useState('3500');
+  const [di, setDi] = useState('20');
+  const [doVal, setDoVal] = useState('50');
+  const [sy, setSy] = useState('850');
+  const [su, setSu] = useState('1050');
+
+  let result;
+  try {
+    result = calculateLameCylinder({
+      internalPressureBar: parseFloat(pressure) || 1000,
+      innerDiameterMm: parseFloat(di) || 10,
+      outerDiameterMm: parseFloat(doVal) || 20,
+      yieldStrengthMpa: parseFloat(sy) || 800,
+      tensileStrengthMpa: parseFloat(su) || 1000,
+    });
+  } catch (e: any) {}
+
+  return (
+    <div className="calc-grid">
+      <div className="form-card">
+        <h3>厚壁圆筒拉美应力与爆破压力 (Lamé Stress)</h3>
+        <Field label="内部工作压力 Pi" value={pressure} onChange={setPressure} unit="bar" presets={[700, 1400, 2800, 4000, 6000]} />
+        <Field label="筒体内径 Di" value={di} onChange={setDi} unit="mm" presets={[10, 20, 25, 40, 50]} />
+        <Field label="筒体外径 Do" value={doVal} onChange={setDoVal} unit="mm" presets={[30, 50, 60, 80, 100]} />
+        <Field label="材料屈服强度 Rp0.2" value={sy} onChange={setSy} unit="MPa" presets={[345, 650, 850, 1050]} />
+        <Field label="材料抗拉强度 Rm" value={su} onChange={setSu} unit="MPa" presets={[550, 800, 1050, 1250]} />
+      </div>
+
+      {result && (
+        <CalcResult
+          title={`厚壁圆筒承压分析 (径比 K = ${result.diameterRatioK.toFixed(2)})`}
+          standardDoc="ASME Section VIII Div 3 / DIN 2413"
+          kpis={[
+            { label: '内壁等效应力 σv', value: result.innerVonMisesStressMpa.toFixed(1), unit: 'MPa' },
+            { label: '初始屈服压力 Py', value: result.yieldPressureBar.toFixed(0), unit: 'bar' },
+            { label: 'Faupel 爆破压力 Pb', value: result.burstPressureBar.toFixed(0), unit: 'bar' },
+            { label: '额定工作压力 MAWP', value: result.mawpBar.toFixed(0), unit: 'bar' },
+          ]}
+          safetyStatus={{
+            label: result.stressRatio <= 1.0 ? '应力在许用范围内' : '内壁屈服超载！需加大壁厚或采用自增强',
+            level: result.stressRatio <= 1.0 ? 'safe' : 'danger',
+            factorValue: 1 / result.stressRatio,
+          }}
+          steps={result.steps}
+        />
+      )}
+    </div>
+  );
+};
+```
+
+### 2. 气体增压器选型与充装时间工具 (`src/tools/GasBoosterTool.tsx`)
+
+```tsx
+import React, { useState } from 'react';
+import { Field } from '../components/Field';
+import { CalcResult } from '../components/CalcResult';
+import { calculateGasBooster } from '../calc/gasBooster';
+
+export const GasBoosterTool: React.FC = () => {
+  const [vol, setVol] = useState('20');
+  const [pin, setPin] = useState('30');
+  const [ptarget, setPtarget] = useState('300');
+  const [pl, setPl] = useState('6.0');
+  const [ratio, setRatio] = useState('60');
+  const [vdisp, setVdisp] = useState('45');
+
+  let result;
+  try {
+    result = calculateGasBooster({
+      vesselVolumeLiter: parseFloat(vol) || 10,
+      supplyPressureBar: parseFloat(pin) || 20,
+      targetPressureBar: parseFloat(ptarget) || 200,
+      driveAirPressureBar: parseFloat(pl) || 6,
+      boosterRatio: parseFloat(ratio) || 30,
+      displacementCcPerStroke: parseFloat(vdisp) || 30,
+    });
+  } catch (e: any) {}
+
+  return (
+    <div className="calc-grid">
+      <div className="form-card">
+        <h3>气动气体增压器选型与充压时间</h3>
+        <Field label="被充容器容积 V" value={vol} onChange={setVol} unit="L" presets={[5, 10, 20, 50, 100]} />
+        <Field label="气源初充压力 Pin" value={pin} onChange={setPin} unit="bar" presets={[10, 20, 30, 50, 100]} />
+        <Field label="目标充装压力 Ptarget" value={ptarget} onChange={setPtarget} unit="bar" presets={[200, 300, 350, 700, 900]} />
+        <Field label="驱动气源压力 PL" value={pl} onChange={setPl} unit="bar" presets={[6.0, 7.0, 8.0]} />
+        <Field label="增压器增压比 i" value={ratio} onChange={setRatio} presets={[15, 30, 60, 75, 150]} />
+        <Field label="每双冲程排量 Vdisp" value={vdisp} onChange={setVdisp} unit="cc" presets={[20, 45, 80, 120]} />
+      </div>
+
+      {result && (
+        <CalcResult
+          title="气体增压充装计算书"
+          standardDoc="ISO 19880 / Maximator Booster Guidelines"
+          kpis={[
+            { label: '充装总耗时', value: result.totalFillTimeMinutes.toFixed(1), unit: 'min' },
+            { label: '理论失速压力 Pstall', value: result.stallPressureBar.toFixed(0), unit: 'bar' },
+            { label: '平均排气流量', value: result.averageFlowNlPerMin.toFixed(1), unit: 'NL/min' },
+            { label: '驱动耗气总量', value: result.driveAirConsumptionNm3.toFixed(2), unit: 'Nm³' },
+          ]}
+          safetyStatus={{
+            label: result.isFeasible ? '增压能力充足' : '无法充到目标压力 (增压比不足)',
+            level: result.isFeasible ? 'safe' : 'danger',
+          }}
+          steps={result.steps}
+        />
+      )}
+    </div>
+  );
+};
+```
+
+### 3. 气压试验爆破能量工具 (`src/tools/PneumaticTestEnergyTool.tsx`)
+
+```tsx
+import React, { useState } from 'react';
+import { Field } from '../components/Field';
+import { CalcResult } from '../components/CalcResult';
+import { calculatePneumaticTestEnergy } from '../calc/pneumaticTestEnergy';
+
+export const PneumaticTestEnergyTool: React.FC = () => {
+  const [vol, setVol] = useState('50');
+  const [press, setPress] = useState('350');
+  const [gas, setGas] = useState<'NITROGEN' | 'AIR' | 'HELIUM'>('NITROGEN');
+
+  let result;
+  try {
+    result = calculatePneumaticTestEnergy({
+      testVolumeLiter: parseFloat(vol) || 10,
+      testPressureBar: parseFloat(press) || 100,
+      gasType: gas,
+    });
+  } catch (e: any) {}
+
+  return (
+    <div className="calc-grid">
+      <div className="form-card">
+        <h3>气压试验爆破储能与安全防护距离</h3>
+        <Field label="试压管路/容器总容积 V" value={vol} onChange={setVol} unit="L" presets={[10, 25, 50, 100, 500]} />
+        <Field label="气压试验压力 P" value={press} onChange={setPress} unit="bar" presets={[100, 200, 350, 700, 1050]} />
+        <Field
+          label="试压气体介质"
+          type="select"
+          value={gas}
+          onChange={(v) => setGas(v as any)}
+          options={[
+            { label: '氮气 (Nitrogen N2, k=1.4)', value: 'NITROGEN' },
+            { label: '压缩空气 (Air, k=1.4)', value: 'AIR' },
+            { label: '氦气 (Helium He, k=1.66)', value: 'HELIUM' },
+          ]}
+        />
+      </div>
+
+      {result && (
+        <CalcResult
+          title="气压试验安全评估 (ASME PCC-2 Article 501)"
+          standardDoc="ASME PCC-2-2022 / NASA Safety Standard"
+          kpis={[
+            { label: '人员安全隔离距离', value: result.safeDistancePersonnelM.toFixed(1), unit: 'm' },
+            { label: '气体总膨胀能 E', value: result.storedEnergyKj.toFixed(0), unit: 'kJ' },
+            { label: '折合 TNT 当量', value: (result.tntEquivalentKg * 1000).toFixed(1), unit: 'g TNT' },
+            { label: '建筑设备防护距离', value: result.safeDistanceBuildingM.toFixed(1), unit: 'm' },
+          ]}
+          safetyStatus={{
+            label: `高风险气压试验: 需在半径 ${result.safeDistancePersonnelM.toFixed(0)}m 内清场隔离`,
+            level: result.tntEquivalentKg > 0.5 ? 'danger' : 'warning',
+          }}
+          steps={result.steps}
+        />
+      )}
+    </div>
+  );
+};
+```
+
+### 4. 真实气体压缩因子与储气量工具 (`src/tools/RealGasTool.tsx`)
+
+```tsx
+import React, { useState } from 'react';
+import { Field } from '../components/Field';
+import { CalcResult } from '../components/CalcResult';
+import { calculateRealGas } from '../calc/realGas';
+
+export const RealGasTool: React.FC = () => {
+  const [gas, setGas] = useState<'NITROGEN' | 'HYDROGEN' | 'HELIUM' | 'AIR'>('NITROGEN');
+  const [press, setPress] = useState('700');
+  const [temp, setTemp] = useState('20');
+  const [vol, setVol] = useState('50');
+
+  let result;
+  try {
+    result = calculateRealGas({
+      gasType: gas,
+      pressureBar: parseFloat(press) || 100,
+      temperatureC: parseFloat(temp) || 20,
+      vesselVolumeLiter: parseFloat(vol) || 50,
+    });
+  } catch (e: any) {}
+
+  return (
+    <div className="calc-grid">
+      <div className="form-card">
+        <h3>高压真实气体压缩因子 Z 与储气量</h3>
+        <Field
+          label="气体类型"
+          type="select"
+          value={gas}
+          onChange={(v) => setGas(v as any)}
+          options={[
+            { label: '高压氮气 (N2)', value: 'NITROGEN' },
+            { label: '高压氢气 (H2 - 35/70 MPa)', value: 'HYDROGEN' },
+            { label: '高压氦气 (He)', value: 'HELIUM' },
+            { label: '高压空气 (Air)', value: 'AIR' },
+          ]}
+        />
+        <Field label="工作压力 P" value={press} onChange={setPress} unit="bar" presets={[200, 350, 450, 700, 900]} />
+        <Field label="工作环境温度 T" value={temp} onChange={setTemp} unit="°C" presets={[-20, 0, 20, 50, 85]} />
+        <Field label="储罐内部几何容积 V" value={vol} onChange={setVol} unit="L" presets={[10, 50, 150, 350, 1000]} />
+      </div>
+
+      {result && (
+        <CalcResult
+          title={`真实气体状态方程求解 (${gas})`}
+          standardDoc="NIST REFPROP / Peng-Robinson Equation"
+          kpis={[
+            { label: '压缩因子 Z', value: result.zFactor.toFixed(4), unit: '' },
+            { label: '实际储气总质量', value: result.totalMassKg.toFixed(2), unit: 'kg' },
+            { label: '标况气体容积 VN', value: result.standardVolumeNm3.toFixed(1), unit: 'Nm³' },
+            { label: '理想气体计算偏差', value: `+${result.errorPercent.toFixed(1)}%`, unit: '' },
+          ]}
+          safetyStatus={{
+            label: result.zFactor > 1.2 ? `高压偏离显著 (Z=${result.zFactor.toFixed(2)})，不可按理想气体计算` : '偏离较小',
+            level: result.zFactor > 1.2 ? 'warning' : 'safe',
+          }}
+          steps={result.steps}
+        />
+      )}
+    </div>
+  );
+};
+```
+
+### 5. 高压孔口临界节流与微泄漏工具 (`src/tools/ChokedFlowTool.tsx`)
+
+```tsx
+import React, { useState } from 'react';
+import { Field } from '../components/Field';
+import { CalcResult } from '../components/CalcResult';
+import { calculateChokedFlow } from '../calc/chokedFlow';
+
+export const ChokedFlowTool: React.FC = () => {
+  const [p1, setP1] = useState('350');
+  const [t1, setT1] = useState('20');
+  const [d0, setD0] = useState('0.5');
+  const [p2, setP2] = useState('1.013');
+  const [gas, setGas] = useState<'NITROGEN' | 'HYDROGEN' | 'AIR'>('NITROGEN');
+
+  let result;
+  try {
+    result = calculateChokedFlow({
+      upstreamPressureBar: parseFloat(p1) || 100,
+      upstreamTemperatureC: parseFloat(t1) || 20,
+      orificeDiameterMm: parseFloat(d0) || 0.5,
+      downstreamPressureBar: parseFloat(p2) || 1.013,
+      gasType: gas,
+    });
+  } catch (e: any) {}
+
+  return (
+    <div className="calc-grid">
+      <div className="form-card">
+        <h3>高压微孔临界节流与泄漏量 (Choked Flow)</h3>
+        <Field label="上游高压压力 P1" value={p1} onChange={setP1} unit="bar" presets={[50, 100, 200, 350, 700]} />
+        <Field label="上游气体温度 T1" value={t1} onChange={setT1} unit="°C" presets={[0, 20, 50, 80]} />
+        <Field label="节流孔/微漏孔径 d0" value={d0} onChange={setD0} unit="mm" presets={[0.1, 0.3, 0.5, 1.0, 2.0]} />
+        <Field label="下游排气背压 P2" value={p2} onChange={setP2} unit="bar" presets={[1.013, 5, 10, 20]} />
+      </div>
+
+      {result && (
+        <CalcResult
+          title={`气体节流流态: ${result.isChoked ? '音速临界流 (Choked Flow)' : '亚音速流'}`}
+          standardDoc="API 520 / ISO 4126"
+          kpis={[
+            { label: '标况体积排量 QN', value: result.standardFlowNlPerMin.toFixed(1), unit: 'NL/min' },
+            { label: '小时泄漏质量', value: result.massFlowRateKgPerHour.toFixed(2), unit: 'kg/h' },
+            { label: '喷射反推力 F', value: result.jetReactionForceN.toFixed(1), unit: 'N' },
+            { label: '临界背压 Pcrit', value: result.criticalPressureBar.toFixed(1), unit: 'bar' },
+          ]}
+          safetyStatus={{
+            label: result.isChoked ? '达到音速临界排气上限' : '背压较高，流速未达音速',
+            level: result.isChoked ? 'warning' : 'safe',
+          }}
+          steps={result.steps}
+        />
+      )}
+    </div>
+  );
+};
+```
+
+---
+
+## 四、全局汇总与菜单注册文件更新
+
+### 1. `src/calc/index.ts` (导出全部 10+ 计算模块)
+
+```typescript
+export * from './cylinder';
+export * from './boltPreload';
+export * from './flangeBolt';
+export * from './shaftDiameter';
+export * from './vessel';
+export * from './beltDrive';
+export * from './hydraulicPumpMotor';
+export * from './accumulator';
+export * from './isoTolerance';
+export * from './motorSizing';
+// 高压系统专属模块
+export * from './lameCylinder';
+export * from './gasBooster';
+export * from './pneumaticTestEnergy';
+export * from './realGas';
+export * from './chokedFlow';
+```
+
+### 2. `src/tools.ts` (完整注册 15 个工具菜单)
+
+```typescript
+import { CylinderForceTool } from './tools/CylinderForceTool';
+import { BoltPreloadTool } from './tools/BoltPreloadTool';
+import { FlangeBoltTool } from './tools/FlangeBoltTool';
+import { ShaftDiameterTool } from './tools/ShaftDiameterTool';
+import { VesselTool } from './tools/VesselTool';
+import { BeltDriveTool } from './tools/BeltDriveTool';
+import { HydraulicPumpMotorTool } from './tools/HydraulicPumpMotorTool';
+import { AccumulatorTool } from './tools/AccumulatorTool';
+import { IsoToleranceTool } from './tools/IsoToleranceTool';
+import { MotorSizingTool } from './tools/MotorSizingTool';
+// 新增高压系统工具
+import { LameCylinderTool } from './tools/LameCylinderTool';
+import { GasBoosterTool } from './tools/GasBoosterTool';
+import { PneumaticTestEnergyTool } from './tools/PneumaticTestEnergyTool';
+import { RealGasTool } from './tools/RealGasTool';
+import { ChokedFlowTool } from './tools/ChokedFlowTool';
+
+export interface ToolDefinition {
+  id: string;
+  name: string;
+  category: 'HYDRAULIC' | 'FASTENERS' | 'STRUCTURE' | 'TRANSMISSION' | 'STANDARDS' | 'HIGH_PRESSURE';
+  description: string;
+  component: React.ComponentType;
+}
+
+export const TOOLS: ToolDefinition[] = [
+  // 基础液压与紧固
+  {
+    id: 'cylinder',
+    name: '气缸/油缸出力计算',
+    category: 'HYDRAULIC',
+    description: '计算气缸与液压缸推力、拉力及负载率',
+    component: CylinderForceTool,
+  },
+  {
+    id: 'hydraulic-pump-motor',
+    name: '液压泵与电机匹配',
+    category: 'HYDRAULIC',
+    description: '液压泵理论排量、轴功率与标准电机等级选型',
+    component: HydraulicPumpMotorTool,
+  },
+  {
+    id: 'accumulator',
+    name: '液压蓄能器容积',
+    category: 'HYDRAULIC',
+    description: '绝热/等温充放油公称容积与氮气预充压力计算',
+    component: AccumulatorTool,
+  },
+  {
+    id: 'bolt-preload',
+    name: '螺栓预紧力与力矩',
+    category: 'FASTENERS',
+    description: 'ISO 898 螺栓预紧力与拧紧扭矩校核',
+    component: BoltPreloadTool,
+  },
+  {
+    id: 'flange-bolt',
+    name: '法兰螺栓载荷',
+    category: 'FASTENERS',
+    description: 'ASME / GB 150 法兰紧固与垫片密封载荷',
+    component: FlangeBoltTool,
+  },
+  // 机械传动与公差
+  {
+    id: 'shaft',
+    name: '传动轴径设计',
+    category: 'TRANSMISSION',
+    description: '基于扭矩与弯扭复合应力的轴径计算',
+    component: ShaftDiameterTool,
+  },
+  {
+    id: 'belt-drive',
+    name: '同步带与 V 带选型',
+    category: 'TRANSMISSION',
+    description: '带轮包角、节线长、中心距及张紧轴力计算',
+    component: BeltDriveTool,
+  },
+  {
+    id: 'motor-sizing',
+    name: '电机选型与惯量匹配',
+    category: 'TRANSMISSION',
+    description: '丝杠/同步带负载惯量折算、峰值扭矩与惯量比校核',
+    component: MotorSizingTool,
+  },
+  {
+    id: 'iso-tolerance',
+    name: 'ISO 公差与配合查询',
+    category: 'STANDARDS',
+    description: 'ISO 286 标准孔轴极限偏差与配合间隙/过盈计算',
+    component: IsoToleranceTool,
+  },
+  {
+    id: 'vessel',
+    name: '薄壁压力容器壁厚',
+    category: 'STRUCTURE',
+    description: '薄壁筒体与封头设计壁厚计算',
+    component: VesselTool,
+  },
+  // 高压系统专属工具 (HIGH_PRESSURE)
+  {
+    id: 'lame-cylinder',
+    name: '厚壁圆筒与爆破压力',
+    category: 'HIGH_PRESSURE',
+    description: '超高压圆筒 Lamé 应力分布、初始屈服与 Faupel 爆破压力',
+    component: LameCylinderTool,
+  },
+  {
+    id: 'gas-booster',
+    name: '气动增压器与充气耗时',
+    category: 'HIGH_PRESSURE',
+    description: '气体增压器失速压力、变背压充气时间积分与驱动耗气量',
+    component: GasBoosterTool,
+  },
+  {
+    id: 'pneumatic-energy',
+    name: '气压试验爆破储能与安全距离',
+    category: 'HIGH_PRESSURE',
+    description: 'ASME PCC-2 压缩气体膨胀能、TNT 当量与安全隔离半径',
+    component: PneumaticTestEnergyTool,
+  },
+  {
+    id: 'real-gas',
+    name: '高压真实气体 Z 因子与储气量',
+    category: 'HIGH_PRESSURE',
+    description: '200~1000 bar 氮气/氢气实际压缩因子、密度与储气质量',
+    component: RealGasTool,
+  },
+  {
+    id: 'choked-flow',
+    name: '高压孔口临界节流与微泄漏',
+    category: 'HIGH_PRESSURE',
+    description: '音速临界流判定、孔板排量、微泄漏率与喷射反冲力',
+    component: ChokedFlowTool,
+  },
+];
+```
+

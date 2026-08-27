@@ -22,6 +22,8 @@ export interface MotorSizingInput {
   fExt: number | null;        // 外部阻力 F, N
   eta: number | null;         // 机械效率 η
   Jm: number | null;          // 电机转子惯量 Jm, kg·cm²(可空)
+  jExt?: number | null;       // 附加外部折算惯量(丝杠自身/联轴器/减速机等), kg·cm²(默认 0)
+  motionCurve?: 'TRAPEZOID' | 'S_CURVE'; // 运动曲线类型(S 曲线加速扭矩按 ×1.3 修正)
 }
 
 export const MOTOR_SIZING_DEFAULTS: MotorSizingInput = {
@@ -35,6 +37,8 @@ export const MOTOR_SIZING_DEFAULTS: MotorSizingInput = {
   fExt: 0,
   eta: 0.85,
   Jm: 10,
+  jExt: 0,
+  motionCurve: 'TRAPEZOID',
 };
 
 /** 标准伺服电机功率等级(W) */
@@ -44,6 +48,7 @@ export function calcMotorSizing(input: MotorSizingInput, opt: CalcOption = { dig
   const {
     mechanism, mass: m, speed: v, accelTime: ta, leadDia: dim,
     gearRatio: i = 1, mu = 0.02, fExt = 0, eta = 0.85, Jm,
+    jExt = 0, motionCurve = 'TRAPEZOID',
   } = input;
   const fe: Record<string, string> = {};
 
@@ -60,6 +65,7 @@ export function calcMotorSizing(input: MotorSizingInput, opt: CalcOption = { dig
   if (fExt != null && Number.isNaN(fExt)) fe.fExt = '外部阻力无效';
   if (eta != null && (Number.isNaN(eta) || eta <= 0 || eta > 1)) fe.eta = '机械效率应在 0~1 之间';
   if (Jm != null && (Number.isNaN(Jm) || Jm <= 0)) fe.Jm = '电机惯量必须大于 0';
+  if (jExt != null && (Number.isNaN(jExt) || jExt < 0)) fe.jExt = '附加惯量不能为负';
 
   if (Object.keys(fe).length) return { ok: false, fieldErrors: fe };
 
@@ -94,6 +100,10 @@ export function calcMotorSizing(input: MotorSizingInput, opt: CalcOption = { dig
     steps.push(`回转工作台机构: 折算负载惯量 JL = Jtable / i² = ${fmt(JL)} kg·cm² (输入质量按台面惯量 kg·cm² 计)`);
   }
 
+  const jExtV = jExt ?? 0;
+  const JLTotal = JL + jExtV;
+  if (jExtV > 0) steps.push(`附加外部惯量(丝杠/联轴器等)J_ext = ${fmt(jExtV)} kg·cm² → 总折算惯量 JL+J_ext = ${fmt(JLTotal)} kg·cm²`);
+
   steps.push(`电机最高运行转速 n_motor = ${fmt(motorSpeedRpm)} rpm`);
 
   const fFriction = muV * mv * 9.81;
@@ -106,12 +116,14 @@ export function calcMotorSizing(input: MotorSizingInput, opt: CalcOption = { dig
   steps.push(`电机轴稳态负载扭矩 TL = ${fmt(constantSpeedTorqueNm)} N·m`);
 
   const omega = (2 * Math.PI * motorSpeedRpm) / 60;
-  const JTotalEstimate = Jm ? (JL + Jm) * 1e-4 : JL * 1.5 * 1e-4;
-  const accelerationTorqueNm = (JTotalEstimate * omega) / tav;
+  const JTotalEstimate = Jm ? (JLTotal + Jm) * 1e-4 : JLTotal * 1.5 * 1e-4;
+  const kCurve = motionCurve === 'S_CURVE' ? 1.3 : 1;   // S 曲线加速度损失修正
+  const accelerationTorqueNmRaw = (JTotalEstimate * omega) / tav;
+  const accelerationTorqueNm = accelerationTorqueNmRaw * kCurve;
   const peakTorqueNm = constantSpeedTorqueNm + accelerationTorqueNm;
 
   steps.push(`加速角加速度 α = ω / ta = ${fmt(omega / tav)} rad/s²`);
-  steps.push(`加速动态扭矩 Ta = J·α = ${fmt(accelerationTorqueNm)} N·m`);
+  steps.push(`加速动态扭矩 Ta = J·α${kCurve !== 1 ? '(×1.3 S 曲线修正)' : ''} = ${fmt(accelerationTorqueNmRaw)}${kCurve !== 1 ? ` × 1.3 = ${fmt(accelerationTorqueNm)}` : ''} N·m`);
   steps.push(`所需峰值启动扭矩 Tpeak = TL + Ta = ${fmt(peakTorqueNm)} N·m`);
 
   const requiredPowerKw = (constantSpeedTorqueNm * omega) / 1000;
@@ -124,7 +136,7 @@ export function calcMotorSizing(input: MotorSizingInput, opt: CalcOption = { dig
   let inertiaRatio: number | undefined;
   let inertiaRating: 'EXCELLENT' | 'GOOD' | 'HIGH' | 'CRITICAL' = 'GOOD';
   if (Jm && Jm > 0) {
-    inertiaRatio = JL / Jm;
+    inertiaRatio = JLTotal / Jm;
     if (inertiaRatio <= 3) inertiaRating = 'EXCELLENT';
     else if (inertiaRatio <= 10) inertiaRating = 'GOOD';
     else if (inertiaRatio <= 20) inertiaRating = 'HIGH';
@@ -133,7 +145,7 @@ export function calcMotorSizing(input: MotorSizingInput, opt: CalcOption = { dig
   }
 
   const results = [
-    { label: '负载惯量 JL', value: fmt(JL), unit: 'kg·cm²' },
+    { label: '负载惯量 JL', value: fmt(JLTotal), unit: 'kg·cm²' },
     ...(inertiaRatio !== undefined
       ? [{ label: '惯量比 JL/Jm', value: fmt(inertiaRatio), unit: '—', tone: (inertiaRatio <= 10 ? 'ok' : inertiaRatio <= 20 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' }]
       : []),
@@ -142,10 +154,11 @@ export function calcMotorSizing(input: MotorSizingInput, opt: CalcOption = { dig
     { label: '加速扭矩 Ta', value: fmt(accelerationTorqueNm), unit: 'N·m' },
     { label: '峰值扭矩 Tpeak', value: fmt(peakTorqueNm), unit: 'N·m', primary: true },
     { label: '稳态功率 P', value: fmt(requiredPowerKw * 1000), unit: 'W' },
-    { label: '推荐电机功率', value: fmt(recommendedMotorPowerW), unit: 'W' },
-    ...(inertiaRatio !== undefined
-      ? [{ label: '惯量匹配评价', value: inertiaRating === 'EXCELLENT' ? '优(≤3)' : inertiaRating === 'GOOD' ? '良(≤10)' : inertiaRating === 'HIGH' ? '中(≤20)' : '差(>20)', tone: (inertiaRatio <= 10 ? 'ok' : inertiaRatio <= 20 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' }]
+    { label: '推荐电机功率', value: fmt(recommendedMotorPowerW), unit: 'W' },        ...(inertiaRatio !== undefined
+          ? [{ label: '惯量匹配评价', value: inertiaRating === 'EXCELLENT' ? '优(≤3)' : inertiaRating === 'GOOD' ? '良(≤10)' : inertiaRating === 'HIGH' ? '中(≤20)' : '差(>20)', tone: (inertiaRatio <= 10 ? 'ok' : inertiaRatio <= 20 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' }]
       : []),
+    ...(jExtV > 0 ? [{ label: '其中·附加外部惯量', value: fmt(jExtV), unit: 'kg·cm²' }] : []),
+    ...(kCurve !== 1 ? [{ label: '运动曲线', value: 'S 曲线(Ta ×1.3)', unit: '' }] : []),
   ];
 
   return {
@@ -180,6 +193,8 @@ export function motorSizingCopyText(input: MotorSizingInput, digits = 2): string
     `摩擦系数 μ = ${fmt(input.mu ?? 0.02)}`,
     input.fExt ? `外部阻力 F = ${fmt(input.fExt)} N` : '',
     input.Jm ? `电机转子惯量 Jm = ${fmt(input.Jm)} kg·cm²` : '',
+    input.jExt ? `附加外部惯量 J_ext = ${fmt(input.jExt)} kg·cm²` : '',
+    `运动曲线: ${input.motionCurve === 'S_CURVE' ? 'S 曲线(Ta ×1.3)' : '梯形'}`,
     '',
     `公式: ${r.formula}`,
     '',

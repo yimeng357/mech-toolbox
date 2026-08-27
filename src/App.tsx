@@ -21,8 +21,15 @@ import { VesselTool } from './tools/VesselTool';
 import { BeltDriveTool } from './tools/BeltDriveTool';
 import { HydraulicPumpMotorTool } from './tools/HydraulicPumpMotorTool';
 import { AccumulatorTool } from './tools/AccumulatorTool';
+import { PipeLossTool } from './tools/PipeLossTool';
+import { CylinderBucklingTool } from './tools/CylinderBucklingTool';
 import { IsoToleranceTool } from './tools/IsoToleranceTool';
 import { MotorSizingTool } from './tools/MotorSizingTool';
+import { LameCylinderTool } from './tools/LameCylinderTool';
+import { GasBoosterTool } from './tools/GasBoosterTool';
+import { PneumaticTestEnergyTool } from './tools/PneumaticTestEnergyTool';
+import { RealGasTool } from './tools/RealGasTool';
+import { ChokedFlowTool } from './tools/ChokedFlowTool';
 
 const SETTINGS_KEY = 'mech_settings_v1';
 
@@ -47,8 +54,15 @@ const VIEW_TITLES: Record<ViewName, { title: string; desc: string }> = {
   belt: { title: '同步带与 V 带', desc: '带传动选型:节线长、中心距、包角与张紧轴力' },
   pump: { title: '液压泵电机匹配', desc: '泵排量、轴功率与标准电机功率等级选型' },
   accumulator: { title: '液压蓄能器', desc: '公称容积、充气压力与压缩比校核' },
+  'pipe-loss': { title: '管路压力损失', desc: '沿程与局部压降、流态判定与流速校核' },
+  'rod-buckling': { title: '液压缸压杆稳定', desc: '活塞杆柔度、临界失稳力与安全系数校核' },
   tolerance: { title: 'ISO 公差配合', desc: '孔轴极限偏差与配合间隙 / 过盈查询' },
   motor: { title: '电机选型', desc: '负载惯量折算、峰值扭矩与惯量比校核' },
+  'lame-cylinder': { title: '厚壁圆筒与爆破压力', desc: 'Lamé 应力分布、初始屈服与 Faupel 爆破压力' },
+  'gas-booster': { title: '气动增压器与充气耗时', desc: '失速压力、变背压充气时间积分与驱动耗气量' },
+  'pneumatic-energy': { title: '气压试验爆破储能', desc: 'ASME PCC-2 压缩气体膨胀能、TNT 当量与安全距离' },
+  'real-gas': { title: '高压真实气体 Z 因子', desc: '200~1000 bar 实际压缩因子、密度与储气质量' },
+  'choked-flow': { title: '高压孔口临界节流', desc: '音速临界流判定、孔板排量、微泄漏率与喷射反冲力' },
   convert: { title: '单位换算', desc: '长度 / 压力 / 力 / 扭矩 / 功率 / 质量 / 温度' },
   history: { title: '历史记录', desc: '所有计算结果均保存在浏览器本地' },
   settings: { title: '设置', desc: '主题、小数位数与数据管理' },
@@ -60,7 +74,8 @@ export default function App() {
   const [history, setHistory] = useState<HistoryRecord[]>(listHistory);
   const [restore, setRestore] = useState<{ toolId: ToolId; inputs: Record<string, string> } | null>(null);
   const [toasts, setToasts] = useState<Array<{ id: number; text: string }>>([]);
-  const [, forceTick] = useState(0);
+  // 系统主题切换时递增，驱动下方 effectiveDark 重算（useMemo 依赖它才能感知 matchMedia 变化）
+  const [systemThemeTick, forceTick] = useState(0);
 
   const themeMode: ThemeMode = settings.theme;
   const effectiveDark = useMemo(() => {
@@ -68,7 +83,7 @@ export default function App() {
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     return themeMode === 'dark';
-  }, [themeMode]);
+  }, [themeMode, systemThemeTick]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', effectiveDark ? 'dark' : 'light');
@@ -127,8 +142,11 @@ export default function App() {
 
   const handleRestored = useCallback(() => setRestore(null), []);
 
-  // 每次计算成功时 touchUsage 已调用;此处基于 usage 计算最近/常用
+  // touchUsage 在每次计算时写入 localStorage；回到首页时刷新快照，保证「最近/常用」及时反映
   const [usageVersion, setUsageVersion] = useState(0);
+  useEffect(() => {
+    if (view === 'dashboard') setUsageVersion((v) => v + 1);
+  }, [view]);
   const usage = useMemo(() => getUsage(), [usageVersion]);
   const recentIds = useMemo(() => recent(usage, 4), [usage]);
   const popularIds = useMemo(() => pop(usage, 4), [usage]);
@@ -194,11 +212,32 @@ export default function App() {
             {view === 'accumulator' && (
               <AccumulatorTool {...toolProps} preset={restore?.toolId === 'accumulator' ? restore.inputs : null} />
             )}
+            {view === 'pipe-loss' && (
+              <PipeLossTool {...toolProps} preset={restore?.toolId === 'pipe-loss' ? restore.inputs : null} />
+            )}
+            {view === 'rod-buckling' && (
+              <CylinderBucklingTool {...toolProps} preset={restore?.toolId === 'rod-buckling' ? restore.inputs : null} />
+            )}
             {view === 'tolerance' && (
               <IsoToleranceTool {...toolProps} preset={restore?.toolId === 'tolerance' ? restore.inputs : null} />
             )}
             {view === 'motor' && (
               <MotorSizingTool {...toolProps} preset={restore?.toolId === 'motor' ? restore.inputs : null} />
+            )}
+            {view === 'lame-cylinder' && (
+              <LameCylinderTool {...toolProps} preset={restore?.toolId === 'lame-cylinder' ? restore.inputs : null} />
+            )}
+            {view === 'gas-booster' && (
+              <GasBoosterTool {...toolProps} preset={restore?.toolId === 'gas-booster' ? restore.inputs : null} />
+            )}
+            {view === 'pneumatic-energy' && (
+              <PneumaticTestEnergyTool {...toolProps} preset={restore?.toolId === 'pneumatic-energy' ? restore.inputs : null} />
+            )}
+            {view === 'real-gas' && (
+              <RealGasTool {...toolProps} preset={restore?.toolId === 'real-gas' ? restore.inputs : null} />
+            )}
+            {view === 'choked-flow' && (
+              <ChokedFlowTool {...toolProps} preset={restore?.toolId === 'choked-flow' ? restore.inputs : null} />
             )}
             {view === 'convert' && <UnitConverter />}
             {view === 'history' && (

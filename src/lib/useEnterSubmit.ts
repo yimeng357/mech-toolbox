@@ -9,6 +9,8 @@ export function useEnterSubmit(onSubmit: () => void) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Enter') return;
+      // 中文/日文等输入法组词确认的 Enter 不触发计算
+      if (e.isComposing) return;
       // 不拦截 select/textarea 中的 Enter
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'SELECT' || tag === 'TEXTAREA') return;

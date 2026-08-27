@@ -23,6 +23,8 @@ const DEFAULTS = {
   p2: String(ACCUMULATOR_DEFAULTS.p2),
   p1: String(ACCUMULATOR_DEFAULTS.p1),
   processType: ACCUMULATOR_DEFAULTS.processType,
+  tempFillC: '20',
+  tempWorkC: '20',
 };
 
 export function AccumulatorTool({ digits, preset, onRestored, onSave, onToast }: Props) {
@@ -32,6 +34,8 @@ export function AccumulatorTool({ digits, preset, onRestored, onSave, onToast }:
       mode: f.mode as AccumulatorMode,
       deltaV: parseNum(f.deltaV), p2: parseNum(f.p2), p1: parseNum(f.p1),
       processType: f.processType as AccumulatorProcess,
+      tempFillC: parseNum(f.tempFillC) ?? 20,
+      tempWorkC: parseNum(f.tempWorkC) ?? 20,
     }),
     calc: (input, opt) => calcAccumulator(input as Parameters<typeof calcAccumulator>[0], opt),
     copyText: (input, d) => accumulatorCopyText(input as Parameters<typeof accumulatorCopyText>[0], d),
@@ -65,6 +69,8 @@ export function AccumulatorTool({ digits, preset, onRestored, onSave, onToast }:
           onChange={(v) => setForm({ ...form, processType: v })}
           options={[{ value: 'ADIABATIC', label: '绝热(n=1.4)' }, { value: 'ISOTHERMAL', label: '等温(n=1.0)' }]}
         />
+        <NumField label="充气时环境温度" symbol="T充" value={form.tempFillC} onChange={(v) => setForm({ ...form, tempFillC: v })} unit="℃" error={errors.tempFillC} hint="与工作温度不同时自动折算现场充气压力" />
+        <NumField label="工作环境温度" symbol="T工" value={form.tempWorkC} onChange={(v) => setForm({ ...form, tempWorkC: v })} unit="℃" error={errors.tempWorkC} hint="冬夏温差可致皮囊压力漂移 10%+" />
         <div className="btn-row">
           <button className="btn" onClick={run}>计算</button>
           <button className="btn ghost" onClick={reset}>重置</button>
