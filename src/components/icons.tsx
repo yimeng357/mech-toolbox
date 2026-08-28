@@ -149,3 +149,23 @@ export const IconPipe = (p: IconProps) => (
 export const IconColumn = (p: IconProps) => (
   <Svg {...p}><path d="M12 21v-4" /><path d="M12 17c-2.6-1.6-2.6-8.4 0-10" /><path d="M12 17c2.6-1.6 2.6-8.4 0-10" /><path d="M12 7V3" /><path d="M10 4.8 12 2.8l2 2" /></Svg>
 );
+
+// 丝杠图标(螺旋线+轴)
+export const IconScrew = (p: IconProps) => (
+  <Svg {...p}><path d="M3 12h18" /><path d="M6 9.5c2.5-1.5 4.5 1.5 7 0s4.5 1.5 5 0" /><path d="M6 14.5c2.5-1.5 4.5 1.5 7 0s4.5 1.5 5 0" /></Svg>
+);
+
+// 弹簧图标
+export const IconSpring = (p: IconProps) => (
+  <Svg {...p}><path d="M6 3v18" /><path d="M18 3v18" /><path d="M6 5.5h12M6 9h12M6 12.5h12M6 16h12M6 19.5h12" /></Svg>
+);
+
+// 焊缝图标(两层板+焊道三角)
+export const IconWeld = (p: IconProps) => (
+  <Svg {...p}><path d="M3 9h18" /><path d="M3 18h18" /><path d="M9 18l6-9v9" /></Svg>
+);
+
+// 键连接图标(轴+键块)
+export const IconKey = (p: IconProps) => (
+  <Svg {...p}><circle cx="8" cy="12" r="5" /><rect x="12" y="9.5" width="9" height="5" rx="1" /></Svg>
+);

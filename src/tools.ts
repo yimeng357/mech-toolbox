@@ -1,6 +1,6 @@
 // 工具元数据(导航、卡片、最近使用等共用)
 import type { ToolId } from './types';
-import { IconPiston, IconBolt, IconShaft, IconFlange, IconVessel, IconBelt, IconPump, IconAccumulator, IconTolerance, IconMotor, IconPressure, IconBooster, IconSafety, IconGas, IconFlow, IconPipe, IconColumn, type IconProps } from './components/icons';
+import { IconPiston, IconBolt, IconShaft, IconFlange, IconVessel, IconBelt, IconPump, IconAccumulator, IconTolerance, IconMotor, IconPressure, IconBooster, IconSafety, IconGas, IconFlow, IconPipe, IconColumn, IconClock, IconScrew, IconGear, IconSpring, IconWeld, IconKey, type IconProps } from './components/icons';
 
 export interface ToolMeta {
   id: ToolId;
@@ -95,6 +95,48 @@ export const TOOLS: ToolMeta[] = [
     formula: 'T = T_L + T_a · JL/Jm',
     icon: IconMotor,
   },
+  {
+    id: 'bearing',
+    name: '滚动轴承寿命',
+    desc: '当量动载荷、L10h 基本额定寿命与目标寿命反算所需额定动载荷。',
+    formula: 'L10 = (C/P)^ε · L10h = 10^6/(60n)·L10',
+    icon: IconClock,
+  },
+  {
+    id: 'ball-screw',
+    name: '滚珠丝杠寿命',
+    desc: '工况分段当量载荷/当量转速、额定寿命与行程寿命、dn 值限速校核。',
+    formula: 'Pm = (ΣPi³·ni·ti/Σni·ti)^(1/3) · L10 = (Ca/Pm)³',
+    icon: IconScrew,
+  },
+  {
+    id: 'gear',
+    name: '齿轮强度',
+    desc: '直齿圆柱齿轮接触/弯曲强度校核(GB/T 3480 选型级简化)。',
+    formula: 'σH = ZE·ZH·√[Ft/(b·d1)·(u+1)/u] ≤ [σH]',
+    icon: IconGear,
+  },
+  {
+    id: 'spring',
+    name: '压缩弹簧设计',
+    desc: '圆柱螺旋压缩弹簧刚度、应力、稳定性与压井高度校核。',
+    formula: 'k = G·d⁴/(8·D³·n) · τ = K·8F·D/(π·d³)',
+    icon: IconSpring,
+  },
+  {
+    id: 'weld',
+    name: '焊缝强度',
+    desc: '角焊缝/对接焊缝静载承载面积与许用应力校核。',
+    formula: "A = 0.7·h·L · τ = F/A ≤ [τ']",
+    icon: IconWeld,
+  },
+  {
+    id: 'key-joint',
+    name: '键/花键校核',
+    desc: '平键挤压/剪切与花键挤压应力校核(GB/T 1095/3478 简化)。',
+    formula: 'σp = 4T/(d·h·L·n) ≤ [σp]',
+    icon: IconKey,
+  },
   // 高压系统专属工具
   {
     id: 'lame-cylinder',
@@ -176,13 +218,13 @@ export const TOOL_GROUPS: ToolGroupMeta[] = [
     accent: '#f59e0b',
     accentSoft: 'rgba(245, 158, 11, 0.14)',
     accentGlow: 'rgba(245, 158, 11, 0.40)',
-    tools: (['bolt', 'flange', 'shaft', 'tolerance'] as ToolId[]).map(getTool),
+    tools: (['bolt', 'flange', 'shaft', 'gear', 'spring', 'weld', 'key-joint', 'tolerance'] as ToolId[]).map(getTool),
   },
   {
     name: '传动与电机',
     accent: '#14b8a6',
     accentSoft: 'rgba(20, 184, 166, 0.14)',
     accentGlow: 'rgba(20, 184, 166, 0.40)',
-    tools: (['belt', 'motor'] as ToolId[]).map(getTool),
+    tools: (['belt', 'motor', 'bearing', 'ball-screw'] as ToolId[]).map(getTool),
   },
 ];

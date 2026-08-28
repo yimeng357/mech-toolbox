@@ -4,6 +4,48 @@ import type { CalcResultData, HistoryRecord, ToolId } from '../types';
 
 const HISTORY_KEY = 'mech_history_v1';
 const USAGE_KEY = 'mech_usage_v1';
+const SCHEMA_VERSION_KEY = '***';
+
+/** 当前存储结构版本;破坏性变更时递增并在 MIGRATIONS 中登记迁移函数 */
+export const STORAGE_SCHEMA_VERSION = 2;
+
+/** 版本迁移链 */
+const MIGRATIONS: Record<number, (data: unknown) => unknown> = {
+  1: (data) => {
+    if (!Array.isArray(data)) return data;
+    return data.map((rec: Record<string, unknown>) => ({
+      id: rec.id ?? 'h_migrated_' + Math.random().toString(36).slice(2, 8),
+      toolId: rec.toolId ?? 'cylinder',
+      toolName: rec.toolName ?? '未知工具',
+      time: rec.time ?? 0,
+      summary: rec.summary ?? '',
+      params: rec.params ?? '',
+      copy: rec.copy ?? '',
+      inputs: rec.inputs ?? {},
+    }));
+  },
+};
+
+/** 读取时执行版本迁移(迁移后回写并更新版本标记) */
+function migrate<T>(key: string, raw: string, fallback: T): T {
+  try {
+    const data = JSON.parse(raw);
+    let version = Number(localStorage.getItem(SCHEMA_VERSION_KEY) ?? '1');
+    if (!Number.isFinite(version) || version < 1) version = 1;
+    let current = data;
+    while (version < STORAGE_SCHEMA_VERSION) {
+      const step = MIGRATIONS[version];
+      if (!step) break;
+      current = step(current);
+      version += 1;
+    }
+    localStorage.setItem(SCHEMA_VERSION_KEY, String(STORAGE_SCHEMA_VERSION));
+    safeSet(key, current);
+    return current as T;
+  } catch {
+    return fallback;
+  }
+}
 
 export interface UsageStat {
   count: number;
@@ -30,7 +72,9 @@ function safeSet(key: string, value: unknown): void {
 
 /** 列出全部历史记录,新→旧 */
 export function listHistory(): HistoryRecord[] {
-  return safeGet<HistoryRecord[]>(HISTORY_KEY, []);
+  const raw = localStorage.getItem(HISTORY_KEY);
+  if (!raw) return [];
+  return migrate<HistoryRecord[]>(HISTORY_KEY, raw, []);
 }
 
 export function addHistory(rec: HistoryRecord): HistoryRecord[] {

@@ -1,6 +1,6 @@
 // 全局共享类型定义
 
-export type ToolId = 'cylinder' | 'bolt' | 'shaft' | 'flange' | 'vessel' | 'belt' | 'pump' | 'accumulator' | 'pipe-loss' | 'rod-buckling' | 'tolerance' | 'motor' | 'lame-cylinder' | 'gas-booster' | 'pneumatic-energy' | 'real-gas' | 'choked-flow';
+export type ToolId = 'cylinder' | 'bolt' | 'shaft' | 'flange' | 'vessel' | 'belt' | 'pump' | 'accumulator' | 'pipe-loss' | 'rod-buckling' | 'tolerance' | 'motor' | 'bearing' | 'ball-screw' | 'gear' | 'spring' | 'weld' | 'key-joint' | 'lame-cylinder' | 'gas-booster' | 'pneumatic-energy' | 'real-gas' | 'choked-flow';
 export type ViewName = 'dashboard' | ToolId | 'convert' | 'history' | 'settings';
 
 /** 一条计算结果(带标签、值、单位) */

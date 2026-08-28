@@ -8,6 +8,7 @@ import { useToolForm } from '../lib/useToolForm';
 import { useEnterSubmit } from '../lib/useEnterSubmit';
 import { NumField, SegField } from '../components/Field';
 import { CalcResult } from '../components/CalcResult';
+import { PresetBar } from '../components/PresetBar';
 
 interface Props {
   digits: number;
@@ -27,7 +28,7 @@ const DEFAULTS = {
 };
 
 export function CylinderForceTool({ digits, preset, onRestored, onSave, onToast }: Props) {
-  const { form, setForm, errors, result, run: rawRun, reset, copy, save } = useToolForm({
+  const { form, setForm, errors, result, run: rawRun, reset, copy, save, presets, savePreset, applyPreset, deletePresetById, presetSaved } = useToolForm({
     toolId: 'cylinder', toolName: '气缸推力', defaults: DEFAULTS,
     buildInput: (f) => ({
       bore: parseNum(f.bore), rod: parseNum(f.rod),
@@ -61,6 +62,7 @@ export function CylinderForceTool({ digits, preset, onRestored, onSave, onToast 
         <SegField label="作用方向" value={form.direction as 'push' | 'pull'} onChange={(v) => setForm({ ...form, direction: v })} options={[{ value: 'push', label: '推出(推力)' }, { value: 'pull', label: '缩回(拉力)' }]} />
         <NumField label="机械效率" symbol="η" value={form.efficiency} onChange={(v) => setForm({ ...form, efficiency: v })} unit="—" error={errors.efficiency} hint="含摩擦与背压损失,常用 0.85~0.95" />
         <NumField label="外部负载(可选)" symbol="F_L" value={form.loadForce} onChange={(v) => setForm({ ...form, loadForce: v })} unit="N" error={errors.loadForce} hint="填入后自动校核负载率 β(气动建议 ≤70%)" />
+        <PresetBar presets={presets} presetSaved={presetSaved} onSave={savePreset} onApply={applyPreset} onDelete={deletePresetById} />
         <div className="btn-row">
           <button className="btn" onClick={run}>计算</button>
           <button className="btn ghost" onClick={reset}>重置</button>

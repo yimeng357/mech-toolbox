@@ -1,0 +1,18 @@
+{
+  "name": "机械工程师工具箱",
+  "short_name": "机械工具箱",
+  "description": "机械工程师日常计算工具箱:液压/气动/超高压/结构/传动 23 个计算工具",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1420",
+  "theme_color": "#1a2332",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

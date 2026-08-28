@@ -2,7 +2,7 @@
 import { useCallback } from 'react';
 import type { HistoryRecord } from '../types';
 import type { PipeLineType } from '../calc/pipeLoss';
-import { PIPE_LOSS_DEFAULTS, calcPipeLoss, pipeLossCopyText } from '../calc/pipeLoss';
+import { PIPE_LOSS_DEFAULTS, PIPE_FITTINGS, calcPipeLoss, pipeLossCopyText } from '../calc/pipeLoss';
 import { parseNum } from '../lib/format';
 import { touchUsage } from '../lib/history';
 import { useToolForm } from '../lib/useToolForm';
@@ -27,6 +27,7 @@ const DEFAULTS = {
   densityKgM3: String(PIPE_LOSS_DEFAULTS.densityKgM3),
   roughnessMm: String(PIPE_LOSS_DEFAULTS.roughnessMm),
   localK: String(PIPE_LOSS_DEFAULTS.localK),
+  fittings: '',
 };
 
 export function PipeLossTool({ digits, preset, onRestored, onSave, onToast }: Props) {
@@ -38,6 +39,7 @@ export function PipeLossTool({ digits, preset, onRestored, onSave, onToast }: Pr
       lengthM: parseNum(f.lengthM), kinViscCst: parseNum(f.kinViscCst),
       densityKgM3: parseNum(f.densityKgM3), roughnessMm: parseNum(f.roughnessMm),
       localK: parseNum(f.localK),
+      fittings: f.fittings ? f.fittings.split(',') : [],
     }),
     calc: (input, opt) => calcPipeLoss(input as Parameters<typeof calcPipeLoss>[0], opt),
     copyText: (input, d) => pipeLossCopyText(input as Parameters<typeof pipeLossCopyText>[0], d),
@@ -74,11 +76,34 @@ export function PipeLossTool({ digits, preset, onRestored, onSave, onToast }: Pr
         />
         <NumField label="油液密度" symbol="ρ" value={form.densityKgM3} onChange={(v) => setForm({ ...form, densityKgM3: v })} unit="kg/m³" error={errors.densityKgM3} hint="矿物油典型 870~900" />
         <NumField
-          label="局部阻力系数之和" symbol="Σζ"
+          label="局部阻力系数(手填)" symbol="Σζ"
           value={form.localK} onChange={(v) => setForm({ ...form, localK: v })}
           unit="—" error={errors.localK}
-          hint="参考:90°弯头0.2~0.5 · 三通0.9~1.8 · 单向阀2~4 · 换向阀2~5"
+          hint="额外补充的 ζ 值,与下方管件选择累加;不确定可填 0 仅用管件库"
         />
+        <div className="field">
+          <div className="lbl"><span>管件选择(多选,自动累加 ζ)</span></div>
+          <div className="preset-list" style={{ marginTop: 6, gap: 6 }}>
+            {PIPE_FITTINGS.map((fit) => {
+              const selected = form.fittings.split(',').filter(Boolean).includes(fit.key);
+              return (
+                <button
+                  key={fit.key}
+                  type="button"
+                  className="preset-chip"
+                  style={{ padding: '2px 10px', fontSize: 11, opacity: selected ? 1 : 0.65, fontWeight: selected ? 700 : 400 }}
+                  onClick={() => {
+                    const cur = form.fittings.split(',').filter(Boolean);
+                    const next = selected ? cur.filter((k) => k !== fit.key) : [...cur, fit.key];
+                    setForm({ ...form, fittings: next.join(',') });
+                  }}
+                >
+                  {selected ? '✓ ' : ''}{fit.name} ζ={fit.zeta}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <NumField label="绝对粗糙度" symbol="ε" value={form.roughnessMm} onChange={(v) => setForm({ ...form, roughnessMm: v })} unit="mm" error={errors.roughnessMm} hint="冷拔无缝钢管≈0.0015,不锈钢光管可填 0" />
         <div className="btn-row">
           <button className="btn" onClick={run}>计算</button>

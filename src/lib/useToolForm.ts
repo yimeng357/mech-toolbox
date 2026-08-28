@@ -1,7 +1,8 @@
-// 通用工具表单 Hook:减少五个工具页重复的状态管理代码
+// 通用工具表单 Hook:减少工具页重复的状态管理代码
 import { useCallback, useEffect, useState } from 'react';
 import type { CalcOutcome, CalcResultData, HistoryRecord, ToolId } from '../types';
 import { makeHistoryRecord } from './history';
+import { savePreset as persistPreset, toolPresets, deletePreset as removePreset, type ToolPreset } from './presets';
 
 export interface UseToolFormOpts {
   toolId: ToolId;
@@ -73,5 +74,33 @@ export function useToolForm(opts: UseToolFormOpts) {
     }));
   }, [form, result, buildInput, copyText, makeParams, toolId, toolName, digits, onSave]);
 
-  return { form, setForm, errors, setErrors, result, setResult, run, reset, copy, save };
+  // —— 参数预设槽(我的设备)——
+  const [presets, setPresets] = useState<ToolPreset[]>(() => toolPresets(toolId));
+  const [presetSaved, setPresetSaved] = useState(false);
+
+  const savePreset = useCallback((name: string) => {
+    setPresets(persistPreset(toolId, name, form));
+    setPresetSaved(true);
+    onToast(`预设「${name.trim() || '默认预设'}」已保存`);
+    setTimeout(() => setPresetSaved(false), 1500);
+  }, [toolId, form, onToast]);
+
+  const applyPreset = useCallback((id: string) => {
+    const p = presets.find((x) => x.id === id);
+    if (!p) return;
+    setForm((f) => {
+      const merged = { ...f };
+      for (const k of Object.keys(f)) {
+        if (k in p.inputs) merged[k] = p.inputs[k];
+      }
+      return merged;
+    });
+    setResult(null);
+  }, [presets, setForm, setResult]);
+
+  const deletePresetById = useCallback((id: string) => {
+    setPresets(removePreset(id));
+  }, []);
+
+  return { form, setForm, errors, setErrors, result, setResult, run, reset, copy, save, presets, savePreset, applyPreset, deletePresetById, presetSaved };
 }

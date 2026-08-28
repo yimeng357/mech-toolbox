@@ -31,14 +31,14 @@ describe('ISO 公差与配合查询计算', () => {
   });
 
   it('P7/h6 为过盈配合', () => {
-    // D=30: P7 es=-21/ei=-42 (基础偏差 -IT7,IT7=21); h6 es=0/ei=-13
+    // D=30: P7(δ = IT7−IT6 = 8) es=−29/ei=−50; h6 es=0/ei=−13
     const o = calcIsoTolerance({ nominalDiameterMm: 30, holeGrade: 'P7', shaftGrade: 'h6' }, { digits: 3 });
     expect(o.ok).toBe(true);
     const r = o.result!;
     expect(r.results[2].value).toBe('过盈配合');
-    // Ymax = |0-(-42)| = 42, Ymin = |-21-(-13)| = 8
-    expect(num(r.results[3].value)).toBeCloseTo(42, 0);
-    expect(num(r.results[4].value)).toBeCloseTo(8, 0);
+    // Ymax = |0−(−35)| = 35, Ymin = |−14−(−13)| = 1(标准表值,含 δ 修正)
+    expect(num(r.results[3].value)).toBeCloseTo(35, 0);
+    expect(num(r.results[4].value)).toBeCloseTo(1, 0);
   });
 
   it('H7/h6 为间隙配合且最小间隙为 0', () => {

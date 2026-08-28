@@ -18,6 +18,9 @@ export interface FlangeInput {
   spec: string;            // 螺栓规格
   d: number | null;        // 螺栓公称直径 mm
   grade: string;           // 强度等级
+  gasketClass?: string;    // 垫片类别(库选,可自动带 m/y;留空则用手填值)
+  gasketM?: number | null; // 垫片系数 m(手填)
+  gasketY?: number | null; // 最小压紧比压 y, MPa(手填)
 }
 
 export const FLANGE_DEFAULTS: FlangeInput = {
@@ -28,7 +31,23 @@ export const FLANGE_DEFAULTS: FlangeInput = {
   spec: 'M16',
   d: 16,
   grade: '8.8',
+  gasketClass: 'asb-compressed',
+  gasketM: null,
+  gasketY: null,
 };
+
+/** 常见垫片 m / y 系数(ASME VIII Table 2-5 典型值,GB 150.3 相容) */
+export interface GasketClass { key: string; name: string; m: number; y: number }
+export const GASKET_CLASSES: GasketClass[] = [
+  { key: 'asb-compressed', name: '石棉橡胶板(压缩,3mm)', m: 2.0, y: 11 },
+  { key: 'asb-1p5', name: '石棉橡胶板(1.5mm)', m: 2.0, y: 14 },
+  { key: 'ptfe-soft', name: '聚四氟乙烯(软)', m: 2.0, y: 7 },
+  { key: 'rubber-hard', name: '硬橡胶(自紧)', m: 1.0, y: 1.4 },
+  { key: 'spiral-ss', name: '不锈钢缠绕垫(石墨填充)', m: 3.0, y: 69 },
+  { key: 'spiral-ss-ptfe', name: '不锈钢缠绕垫(PTFE 填充)', m: 2.5, y: 20 },
+  { key: 'metal-jacket', name: '金属包覆垫(软钢)', m: 3.75, y: 52 },
+  { key: 'solid-flat-ss', name: '金属平垫(不锈钢)', m: 4.0, y: 124 },
+];
 
 export function calcFlange(input: FlangeInput, opt: CalcOption = { digits: 2 }): CalcOutcome {
   const { od, sealD, pressure, count, d, grade } = input;
@@ -72,6 +91,29 @@ export function calcFlange(input: FlangeInput, opt: CalcOption = { digits: 2 }):
         : '超过屈服强度,不安全';
   const verdictTone: 'ok' | 'warn' | 'bad' = util <= 80 ? 'ok' : util <= 100 ? 'warn' : 'bad';
 
+  // —— 垫片两工况校核(ASME VIII / GB 150.3 思路)——
+  // 预紧工况:Wm2 = π·b·DG·y         (压紧垫片所需总预紧力,b = 有效垫片宽度,DG/2 近似)
+  // 操作工况:Wm1 = (π/4)·DG²·p + 2·b·π·DG·m·p   (内压分离 + 操作下垫片保持密封所需)
+  // 螺栓需要提供的总夹紧力 W_req = max(Wm2, Wm1),单螺栓校核
+  const gasket = GASKET_CLASSES.find((g) => g.key === input.gasketClass);
+  const mVal = input.gasketM ?? gasket?.m ?? null;
+  const yVal = input.gasketY ?? gasket?.y ?? null;
+  const bEff = DG / 4; // 有效宽度近似(平面法兰窄垫片取 DG/4~DG/2,偏保守取 1/4)
+  let gasketOut: null | { Wm2: number; Wm1: number; Wreq: number; FbReq: number; sigmaReq: number; utilReq: number; controlling: string; pass: boolean } = null;
+  if (mVal != null && yVal != null && mVal > 0 && yVal > 0) {
+    const Wm2 = Math.PI * bEff * DG * yVal;                       // N
+    const Wm1 = F + 2 * bEff * Math.PI * DG * mVal * P;           // N
+    const Wreq = Math.max(Wm2, Wm1);
+    const FbReq = Wreq / N;
+    const sigmaReq = FbReq / As;
+    const utilReq = (sigmaReq / sigmaS) * 100;
+    gasketOut = {
+      Wm2, Wm1, Wreq, FbReq, sigmaReq, utilReq,
+      controlling: Wm2 >= Wm1 ? '预紧压紧工况控制' : '操作密封工况控制',
+      pass: utilReq <= 80,
+    };
+  }
+
   const fmt = (n: number) => fmtNum(n, opt.digits);
 
   return {
@@ -87,6 +129,12 @@ export function calcFlange(input: FlangeInput, opt: CalcOption = { digits: 2 }):
         `螺栓应力 σ = F_b/A_s = ${fmt(Fb)} / ${fmt(As)} = ${fmt(sigma)} MPa`,
         `强度等级 ${grade}:σs = ${fmt(sigmaS)} MPa,利用率 = ${fmt(util)}%`,
         `估算螺栓圈直径 D_bc ≈ (OD+D_g)/2 = ${fmt(dbc)} mm,相邻螺栓间距 ≈ ${fmt(pitch)} mm`,
+        ...(gasketOut ? [
+          `垫片「${gasket?.name ?? '手填'}」m = ${fmt(mVal as number)}, y = ${fmt(yVal as number)} MPa,有效宽度 b ≈ DG/4 = ${fmt(bEff)} mm`,
+          `预紧工况 Wm2 = π·b·DG·y = ${fmt(gasketOut.Wm2 / 1000)} kN`,
+          `操作工况 Wm1 = (π/4)·DG²·p + 2π·b·DG·m·p = ${fmt(gasketOut.Wm1 / 1000)} kN`,
+          `控制工况:${gasketOut.controlling},单螺栓所需预紧 F_b,req = ${fmt(gasketOut.FbReq)} N,应力 ${fmt(gasketOut.sigmaReq)} MPa(利用率 ${fmt(gasketOut.utilReq)}%)`,
+        ] : []),
       ],
       results: [
         { label: '密封面积 A', value: fmt(area), unit: 'mm²' },
@@ -95,9 +143,15 @@ export function calcFlange(input: FlangeInput, opt: CalcOption = { digits: 2 }):
         { label: '单个螺栓平均载荷 F_b', value: fmt(Fb), unit: 'N', primary: true },
         { label: '螺栓轴向应力 σ(估算)', value: fmt(sigma), unit: 'MPa' },
         { label: '应力利用率', value: `${fmt(util)}%`, unit: '(vs σs)' },
+        ...(gasketOut ? [
+          { label: '预紧工况总力 Wm2', value: fmt(gasketOut.Wm2 / 1000), unit: 'kN' },
+          { label: '操作工况总力 Wm1', value: fmt(gasketOut.Wm1 / 1000), unit: 'kN' },
+          { label: '单螺栓所需预紧力', value: fmt(gasketOut.FbReq), unit: 'N', primary: !gasketOut.pass, tone: (gasketOut.pass ? 'ok' : 'warn') as 'ok' | 'warn' },
+          { label: '垫片校核利用率', value: `${fmt(gasketOut.utilReq)}%`, unit: `(vs σs) · ${gasketOut.controlling}`, tone: (gasketOut.pass ? 'ok' : 'warn') as 'ok' | 'warn' },
+        ] : []),
         { label: '受力判断', value: verdict, tone: verdictTone },
       ],
-      note: '本计算为简化的静力估算:按内压分离载荷估算了螺栓预紧需求。实际法兰连接还需计入垫片预紧力(压紧比压)、螺栓预紧分散、密封面刚度等,应按 GB/T 150.3 或 ASME BPVC 第 VIII 卷进行设计校核。',
+      note: `本工具已包含内压分离力的简化校核${gasketOut ? '与 ASME VIII/GB 150.3 垫片两工况(m/y)校核' : '。填选垫片类别可启用 m/y 两工况密封校核'}。m/y 为 ASME Table 2-5 典型值,精确设计还应计入垫片刚度、螺栓分散与法兰刚度,按 GB/T 150.3 或 ASME BPVC VIII 校核。`,
       disclaimer: true,
     },
   };

@@ -1,8 +1,9 @@
-// 法兰螺栓计算工具页
+﻿// 法兰螺栓计算工具页
 import { useCallback, useEffect } from 'react';
 import type { HistoryRecord } from '../types';
 import { FLANGE_DEFAULTS, calcFlange, flangeCopyText } from '../calc/flangeBolt';
 import { BOLT_GRADES, METRIC_BOLTS } from '../calc/boltPreload';
+import { GASKET_CLASSES } from '../calc/flangeBolt';
 import { parseNum } from '../lib/format';
 import { touchUsage } from '../lib/history';
 import { useToolForm } from '../lib/useToolForm';
@@ -26,6 +27,7 @@ const DEFAULTS = {
   spec: FLANGE_DEFAULTS.spec,
   d: String(FLANGE_DEFAULTS.d),
   grade: FLANGE_DEFAULTS.grade,
+  gasketClass: FLANGE_DEFAULTS.gasketClass ?? '',
 };
 
 export function FlangeBoltTool({ digits, preset, onRestored, onSave, onToast }: Props) {
@@ -34,6 +36,7 @@ export function FlangeBoltTool({ digits, preset, onRestored, onSave, onToast }: 
     buildInput: (f) => ({
       od: parseNum(f.od), sealD: parseNum(f.sealD), pressure: parseNum(f.pressure),
       count: parseNum(f.count), spec: f.spec, d: parseNum(f.d), grade: f.grade,
+      gasketClass: f.gasketClass,
     }),
     calc: (input, opt) => calcFlange(input as Parameters<typeof calcFlange>[0], opt),
     copyText: (input, d) => flangeCopyText(input as Parameters<typeof flangeCopyText>[0], d),
@@ -80,6 +83,16 @@ export function FlangeBoltTool({ digits, preset, onRestored, onSave, onToast }: 
           value={form.grade}
           onChange={(v) => setForm({ ...form, grade: v })}
           options={BOLT_GRADES.map((g) => ({ value: g.id, label: g.label }))}
+        />
+        <SelectField
+          label="垫片类别(m/y 两工况校核)"
+          value={form.gasketClass}
+          onChange={(v) => setForm({ ...form, gasketClass: v })}
+          options={[
+            { value: '', label: '— 不校核垫片 —' },
+            ...GASKET_CLASSES.map((g) => ({ value: g.key, label: `${g.name}(m=${g.m}, y=${g.y})` })),
+          ]}
+          hint="选中后按 ASME VIII/GB 150.3 校核预紧压紧与操作密封两工况"
         />
         <div className="btn-row">
           <button className="btn" onClick={run}>计算</button>

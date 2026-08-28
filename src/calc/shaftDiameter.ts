@@ -23,6 +23,15 @@ export interface ShaftInput {
   sigmaB?: number | null;        // 许用弯应力 [σ-1b], MPa(可选,M 输入时使用;缺省自动取 60)
   keywayFactor?: number | null;  // 键槽削弱系数 K_w(0<K_w≤1,默认 1)
   hollowRatio?: number | null;   // 空心轴内外径比 α = di/do([0,0.9),默认 0 实心)
+  // —— 疲劳安全系数法校核(可选,输入弯矩与材料参数后启用)——
+  fatigueCheck?: boolean;        // 启用疲劳安全系数校核
+  sigmaNeg1?: number | null;     // 对称弯曲疲劳极限 σ-1, MPa(材料库可查)
+  tauNeg1?: number | null;       // 扭转疲劳极限 τ-1, MPa(缺省取 0.58σ-1)
+  sigmaBm?: number | null;       // 抗拉强度 σb, MPa(用于尺寸系数插值)
+  Ksigma?: number | null;        // 有效应力集中系数 Kσ(缺省 1.8,含键槽/圆角综合)
+  Ktau?: number | null;          // 扭转有效应力集中系数 Kτ(缺省取 0.8·Kσ+0.6)
+  surfaceFactor?: number | null; // 表面质量系数 β(精车 0.85~0.92,磨削 0.94~0.98)
+  meanTorqueFactor?: number | null; // 扭转循环性质系数 ψτ(脉动 0.3,对称 1,缺省 0.3)
 }
 
 export const SHAFT_DEFAULTS: ShaftInput = {
@@ -36,6 +45,14 @@ export const SHAFT_DEFAULTS: ShaftInput = {
   sigmaB: null,
   keywayFactor: 1,
   hollowRatio: 0,
+  fatigueCheck: false,
+  sigmaNeg1: null,
+  tauNeg1: null,
+  sigmaBm: null,
+  Ksigma: null,
+  Ktau: null,
+  surfaceFactor: null,
+  meanTorqueFactor: null,
 };
 
 /** 常用标准轴径系列(优先取上一档) */
@@ -123,6 +140,46 @@ export function calcShaft(input: ShaftInput, opt: CalcOption = { digits: 2 }): C
   const dRec = roundUpToStandard(dMin);
   const tauActual = (16 * Tmm) / (Math.PI * Math.pow(dRec, 3) * Kw * hollowTerm); // MPa
 
+  // —— 疲劳安全系数法校核(GB/T 5121 / 机械设计手册方法)——
+  // S = σ-1 / (Kσ·σa/(βε) + ψσ·σm) 与扭转部分合成:S = Sσ·Sτ/√(Sσ²+Sτ²)
+  let fatigueOut: null | {
+    sigmaA: number; sigmaM: number; tauA: number; tauM: number;
+    KsigmaEff: number; KtauEff: number; betaE: number;
+    Ssigma: number; Stau: number; S: number; pass: boolean;
+  } = null;
+  const fatigueEnabled = !!input.fatigueCheck && (bendingMoment != null && bendingMoment > 0);
+  if (fatigueEnabled) {
+    const sigmaN1 = input.sigmaNeg1 ?? null;
+    if (sigmaN1 == null || sigmaN1 <= 0) {
+      fe.sigmaNeg1 = '启用疲劳校核时需填写 σ-1(材料库牌号含此值)';
+    } else {
+      const dMm = dRec;
+      const W = (Math.PI / 32) * Math.pow(dMm, 3) * hollowTerm - 0; // 抗弯截面模量 mm³(简化:不含键槽,集中系数已含削弱)
+      const Wp = (Math.PI / 16) * Math.pow(dMm, 3) * hollowTerm;
+      const Mmm2 = (bendingMoment as number) * 1000;
+      // 弯曲:对称循环 σa = M/W,σm = 0;扭转:脉动 τa = τm = T/(2·Wp)
+      const sigmaA = Mmm2 / W;
+      const sigmaM = 0;
+      const tauA = Tmm / (2 * Wp);
+      const tauM = tauA;
+      // 有效应力集中 / 尺寸 / 表面
+      const Ks = input.Ksigma ?? 1.8;
+      const Kt = input.Ktau ?? 0.8 * Ks + 0.6;
+      // 尺寸系数 ε(碳钢合金钢经验式):ε = 0.88·d^-0.045 系列粗估,夹在 [0.6,1]
+      const epsSize = Math.min(1, Math.max(0.6, 1.02 * Math.pow(dMm / 20, -0.12)));
+      const beta = input.surfaceFactor ?? 0.9;
+      const betaE = beta * epsSize; // 表面×尺寸综合系数
+      const psiTau = input.meanTorqueFactor ?? 0.3;
+      const tauN1 = input.tauNeg1 ?? 0.58 * sigmaN1;
+      const Ssigma = sigmaN1 / ((Ks / betaE) * sigmaA + 0);   // σm = 0
+      const Stau = tauN1 / ((Kt / betaE) * tauA + psiTau * tauM);
+      const S = (Ssigma * Stau) / Math.sqrt(Ssigma * Ssigma + Stau * Stau);
+      const Sreq = safety ?? 1.5;
+      fatigueOut = { sigmaA, sigmaM, tauA, tauM, KsigmaEff: Ks, KtauEff: Kt, betaE, Ssigma, Stau, S, pass: S >= Sreq };
+    }
+  }
+  if (Object.keys(fe).length) return { ok: false, fieldErrors: fe };
+
   const steps = [
     torqueNote,
     `[τ]设计 = [τ] / S = ${fmt(tau as number)} / ${fmt(safety as number)} = ${fmt(tauDesign)} MPa`,
@@ -138,6 +195,12 @@ export function calcShaft(input: ShaftInput, opt: CalcOption = { digits: 2 }): C
       : []),
     `取标准直径 d = ${fmt(dRec)} mm(≥ ${fmt(dMin)} mm)`,
     `校核:τ = 16T/(π·d³·K_w·(1−α⁴)) = ${fmt(tauActual)} MPa ≤ ${fmt(tauDesign)} MPa ✓`,
+    ...(fatigueOut ? [
+      `疲劳校核(弯曲对称 + 扭转脉动):σa = M/W = ${fmt(fatigueOut.sigmaA)} MPa, τa = T/(2Wp) = ${fmt(fatigueOut.tauA)} MPa`,
+      `综合影响系数:Kσ = ${fmt(fatigueOut.KsigmaEff)}, Kτ = ${fmt(fatigueOut.KtauEff)}, β×ε(表面×尺寸) = ${fmt(fatigueOut.betaE)}`,
+      `弯曲安全系数 Sσ = σ-1/[(Kσ/βε)·σa] = ${fmt(fatigueOut.Ssigma)},扭转安全系数 Sτ = ${fmt(fatigueOut.Stau)}`,
+      `总安全系数 S = Sσ·Sτ/√(Sσ²+Sτ²) = ${fmt(fatigueOut.S)} ${fatigueOut.pass ? `≥ 要求值 ${fmt(safety as number)} ✓` : `< 要求值 ${fmt(safety as number)} ✗ 需加大轴径或降低应力集中`}`,
+    ] : []),
   ];
 
   return {
@@ -163,12 +226,18 @@ export function calcShaft(input: ShaftInput, opt: CalcOption = { digits: 2 }): C
             ]
           : []),
         ...(sectionNote ? [{ label: '截面修正', value: sectionNote, unit: '' }] : []),
+        ...(fatigueOut ? [
+          { label: '弯曲应力幅 σa', value: fmt(fatigueOut.sigmaA), unit: 'MPa' },
+          { label: '扭转应力幅 τa', value: fmt(fatigueOut.tauA), unit: 'MPa' },
+          { label: '疲劳安全系数 S', value: fmt(fatigueOut.S), unit: `(要求 ≥ ${fmt(safety as number)})`, primary: true, tone: (fatigueOut.pass ? 'ok' : 'bad') as 'ok' | 'bad' },
+        ] : []),
       ],
       note: `已考虑${[
         Kw !== 1 ? '键槽削弱' : null,
         alphaH > 0 ? '空心轴折减' : null,
         dMinSynthesis != null ? '弯扭合成(第三强度理论)' : null,
-      ].filter(Boolean).join('、') || ''}。未计轴肩应力集中与疲劳安全系数校核;高速轴还应校核临界转速。许用弯应力缺省 60 MPa(约对应 45 钢调质脉动弯曲),重要轴请按疲劳精确校核。`,
+        fatigueOut ? '疲劳安全系数校核(按弯矩作用截面)' : null,
+      ].filter(Boolean).join('、') || ''}。疲劳校核为单截面估算:应力集中 Kσ/表面系数 β 取默认值时结果偏保守,危险截面有轴肩/过盈配合时应按实际几何修正;高速轴还应校核临界转速。`,
       disclaimer: true,
     },
   };

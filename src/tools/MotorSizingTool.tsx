@@ -30,6 +30,8 @@ const DEFAULTS = {
   Jm: String(MOTOR_SIZING_DEFAULTS.Jm),
   jExt: '0',
   motionCurve: 'TRAPEZOID',
+  dutyTime: '',
+  dutyRunTime: '',
 };
 
 const MECH_NAMES: Record<MechanismType, string> = {
@@ -49,10 +51,12 @@ export function MotorSizingTool({ digits, preset, onRestored, onSave, onToast }:
       fExt: parseNum(f.fExt), eta: parseNum(f.eta), Jm: parseNum(f.Jm),
       jExt: parseNum(f.jExt) ?? 0,
       motionCurve: (f.motionCurve as 'TRAPEZOID' | 'S_CURVE') || 'TRAPEZOID',
+      dutyTime: parseNum(f.dutyTime),
+      dutyRunTime: parseNum(f.dutyRunTime),
     }),
     calc: (input, opt) => calcMotorSizing(input as Parameters<typeof calcMotorSizing>[0], opt),
     copyText: (input, d) => motorSizingCopyText(input as Parameters<typeof motorSizingCopyText>[0], d),
-    makeParams: (f) => `${MECH_NAMES[f.mechanism as MechanismType]} · m=${f.mass || '—'} · v=${f.speed || '—'} · ta=${f.accelTime || '—'}s · i=${f.gearRatio || '—'}`,
+    makeParams: (f) => `${MECH_NAMES[f.mechanism as MechanismType]} · m=${f.mass || '—'} · v=${f.speed || '—'} · ta=${f.accelTime || '—'}s · i=${f.gearRatio || '—'}${f.dutyTime ? ` · tc=${f.dutyTime}s` : ''}`,
     preset, digits, onRestored, onSave, onToast,
   });
 
@@ -116,6 +120,8 @@ export function MotorSizingTool({ digits, preset, onRestored, onSave, onToast }:
             ))}
           </div>
         </div>
+        <NumField label="工作循环时间" symbol="tc" value={form.dutyTime} onChange={(v) => setForm({ ...form, dutyTime: v })} unit="s" error={errors.dutyTime} opt="可选" hint="填写后启用 Trms 发热校核(伺服选型建议必填);留空则只算峰值扭矩" />
+        <NumField label="每循环运动时间" symbol="t?" value={form.dutyRunTime} onChange={(v) => setForm({ ...form, dutyRunTime: v })} unit="s" error={errors.dutyRunTime} opt="可选" hint="留空视为连续运转(tc);停止等待时间 = tc − t" />
         <div className="btn-row">
           <button className="btn" onClick={run}>计算</button>
           <button className="btn ghost" onClick={reset}>重置</button>

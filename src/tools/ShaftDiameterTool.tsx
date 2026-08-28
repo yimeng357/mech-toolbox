@@ -2,6 +2,7 @@
 import { useCallback } from 'react';
 import type { HistoryRecord } from '../types';
 import { SHAFT_DEFAULTS, calcShaft, shaftCopyText } from '../calc/shaftDiameter';
+import { MATERIALS, sigmaNeg1Of } from '../calc/materials';
 import { parseNum } from '../lib/format';
 import { touchUsage } from '../lib/history';
 import { useToolForm } from '../lib/useToolForm';
@@ -28,6 +29,11 @@ const DEFAULTS = {
   sigmaB: '',
   keywayFactor: '1',
   hollowRatio: '0',
+  fatigueCheck: 'false',
+  fatigueMat: '',
+  sigmaNeg1: '',
+  Ksigma: '1.8',
+  surfaceFactor: '0.9',
 };
 
 export function ShaftDiameterTool({ digits, preset, onRestored, onSave, onToast }: Props) {
@@ -39,6 +45,10 @@ export function ShaftDiameterTool({ digits, preset, onRestored, onSave, onToast 
       bendingMoment: parseNum(f.bendingMoment), sigmaB: parseNum(f.sigmaB),
       keywayFactor: parseNum(f.keywayFactor) ?? 1,
       hollowRatio: parseNum(f.hollowRatio) ?? 0,
+      fatigueCheck: f.fatigueCheck === 'true',
+      sigmaNeg1: parseNum(f.sigmaNeg1),
+      Ksigma: parseNum(f.Ksigma),
+      surfaceFactor: parseNum(f.surfaceFactor),
     }),
     calc: (input, opt) => calcShaft(input as Parameters<typeof calcShaft>[0], opt),
     copyText: (input, d) => shaftCopyText(input as Parameters<typeof shaftCopyText>[0], d),
@@ -55,6 +65,7 @@ export function ShaftDiameterTool({ digits, preset, onRestored, onSave, onToast 
           : []),
         f.keywayFactor !== '1' ? `Kw=${f.keywayFactor}` : null,
         f.hollowRatio !== '0' && f.hollowRatio !== '' ? `α=${f.hollowRatio}` : null,
+        f.fatigueCheck === 'true' ? `疲劳校核${f.sigmaNeg1 ? `(σ-1=${f.sigmaNeg1})` : ''}` : null,
       ].filter(Boolean).join(' · ');
     },
     preset, digits, onRestored, onSave, onToast,
@@ -96,6 +107,38 @@ export function ShaftDiameterTool({ digits, preset, onRestored, onSave, onToast 
           </div>
         </div>
         <NumField label="空心轴内外径比" symbol="α" value={form.hollowRatio} onChange={(v) => setForm({ ...form, hollowRatio: v })} unit="di/do" error={errors.hollowRatio} hint="实心轴填 0,空心轴填 di/do(如 0.5)" />
+        <div className="field">
+          <div className="lbl"><span>疲劳安全系数校核</span></div>
+          <div className="seg">
+            <button type="button" className={form.fatigueCheck !== 'true' ? 'active' : ''} onClick={() => setForm({ ...form, fatigueCheck: 'false' })}>关闭</button>
+            <button type="button" className={form.fatigueCheck === 'true' ? 'active' : ''} onClick={() => setForm({ ...form, fatigueCheck: 'true' })}>启用</button>
+          </div>
+        </div>
+        {form.fatigueCheck === 'true' && (
+          <>
+            <div className="field">
+              <div className="lbl"><span>材料牌号速填(自动带 σ-1)</span></div>
+              <select
+                value={form.fatigueMat}
+                onChange={(e) => {
+                  const m = MATERIALS.find((x) => x.id === e.target.value);
+                  setForm((f) => m
+                    ? { ...f, fatigueMat: m.id, sigmaNeg1: String(sigmaNeg1Of(m)) }
+                    : { ...f, fatigueMat: '' });
+                  e.currentTarget.selectedIndex = 0;
+                }}
+              >
+                <option value="">— 手动输入 σ-1 —</option>
+                {MATERIALS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}(σ-1 {sigmaNeg1Of(m)} MPa)</option>
+                ))}
+              </select>
+            </div>
+            <NumField label="弯曲疲劳极限" symbol="σ-1" value={form.sigmaNeg1} onChange={(v) => setForm({ ...form, sigmaNeg1: v })} unit="MPa" error={errors.sigmaNeg1} hint="对称循环弯曲疲劳极限,45 钢调质约 258" />
+            <NumField label="应力集中系数" symbol="Kσ" value={form.Ksigma} onChange={(v) => setForm({ ...form, Ksigma: v })} unit="—" error={errors.Ksigma} hint="键槽 1.6~1.9,轴肩圆角 1.7~2.2,过盈配合 2.2~3" />
+            <NumField label="表面质量系数" symbol="β" value={form.surfaceFactor} onChange={(v) => setForm({ ...form, surfaceFactor: v })} unit="—" error={errors.surfaceFactor} hint="精车 0.85~0.92,磨削 0.94~0.98" />
+          </>
+        )}
         <div className="btn-row">
           <button className="btn" onClick={run}>计算</button>
           <button className="btn ghost" onClick={reset}>重置</button>

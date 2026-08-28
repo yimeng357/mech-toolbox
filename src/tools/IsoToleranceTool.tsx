@@ -1,7 +1,7 @@
 // ISO 公差与配合查询工具页
 import { useCallback } from 'react';
 import type { HistoryRecord } from '../types';
-import { ISO_TOLERANCE_DEFAULTS, HOLE_GRADE_OPTIONS, SHAFT_GRADE_OPTIONS, calcIsoTolerance, isoToleranceCopyText } from '../calc/isoTolerance';
+import { ISO_TOLERANCE_DEFAULTS, HOLE_GRADE_OPTIONS, SHAFT_GRADE_OPTIONS, FIT_SCENARIOS, calcIsoTolerance, isoToleranceCopyText } from '../calc/isoTolerance';
 import { parseNum } from '../lib/format';
 import { touchUsage } from '../lib/history';
 import { useToolForm } from '../lib/useToolForm';
@@ -24,7 +24,7 @@ const DEFAULTS = {
 };
 
 export function IsoToleranceTool({ digits, preset, onRestored, onSave, onToast }: Props) {
-  const { form, setForm, errors, result, run: rawRun, reset, copy, save } = useToolForm({
+  const { form, setForm, errors, result, setResult, run: rawRun, reset, copy, save } = useToolForm({
     toolId: 'tolerance', toolName: 'ISO 公差配合', defaults: DEFAULTS,
     buildInput: (f) => ({
       nominalDiameterMm: parseNum(f.nominalDiameterMm),
@@ -38,6 +38,11 @@ export function IsoToleranceTool({ digits, preset, onRestored, onSave, onToast }
 
   const run = useCallback(() => { rawRun(); touchUsage('tolerance'); }, [rawRun]);
   useEnterSubmit(run);
+
+  const applyFit = useCallback((hole: string, shaft: string) => {
+    setForm((f) => ({ ...f, holeGrade: hole, shaftGrade: shaft }));
+    setResult(null);
+  }, [setForm, setResult]);
 
   return (
     <div className="tool-layout">
@@ -55,8 +60,25 @@ export function IsoToleranceTool({ digits, preset, onRestored, onSave, onToast }
           value={form.shaftGrade}
           onChange={(v) => setForm({ ...form, shaftGrade: v })}
           options={SHAFT_GRADE_OPTIONS.map((g) => ({ value: g, label: g }))}
-          hint="常用配合: H7/g6 间隙 · H7/k6 过渡 · H7/p6 过盈"
         />
+        <div className="field">
+          <div className="lbl"><span>典型配合速选</span></div>
+          <div className="preset-list" style={{ marginTop: 6, gap: 6 }}>
+            {FIT_SCENARIOS.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                className="preset-chip"
+                style={{ padding: '2px 10px', fontSize: 11 }}
+                title={s.desc}
+                onClick={() => applyFit(s.hole, s.shaft)}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+          <div className="hint">点击自动填入孔/轴公差带,悬停查看适用场景</div>
+        </div>
         <div className="btn-row">
           <button className="btn" onClick={run}>计算</button>
           <button className="btn ghost" onClick={reset}>重置</button>
